@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* recharts sets the tooltip item row to black inline; force it readable
+   on the dark tooltip background regardless of recharts version */
+.recharts-default-tooltip .recharts-tooltip-item,
+.recharts-tooltip-item-list .recharts-tooltip-item {
+  color: #e4e4e7 !important;
+}
+.recharts-tooltip-label {
+  color: #a1a1aa !important;
+}

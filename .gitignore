@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+stock-lens-data/data/*.csv
+!stock-lens-data/data/securities.csv
+.env
+.DS_Store
+__pycache__/
+web/node_modules/
+web/.next/
+logs/
+
+.env
+.env.*
+web/.env.local

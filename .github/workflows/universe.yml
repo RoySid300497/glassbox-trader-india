@@ -1,0 +1,36 @@
+name: universe
+
+on:
+  schedule:
+    - cron: "23 11 1 * *"   # refreshing constituents on the 1st of each month
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install the refresh dependencies
+        run: pip install pandas requests lxml
+
+      - name: rebuild the current universe file
+        env:
+          STOCK_LENS_BASE: ${{ github.workspace }}/stock-lens-data
+        run: python scripts/build_universe.py
+
+      - name: commit the universe when constituents changed
+        run: |
+          git config user.name "engine-bot"
+          git config user.email "actions@github.com"
+          git add stock-lens-data/data/universe.csv
+          git diff --cached --quiet || \
+            (git commit -m "universe: monthly constituent refresh" && git push)

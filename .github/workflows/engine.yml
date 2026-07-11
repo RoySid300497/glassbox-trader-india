@@ -1,0 +1,94 @@
+name: engine
+
+on:
+  schedule:
+    - cron: "37 12 * * 1-5"   # daily decisions, weekdays ~12:37 UTC (off-peak minute)
+    - cron: "7 14 * * 1-5"    # catch-up daily, fires only if the first was dropped
+    - cron: "7 15 * * 1-5"    # second catch-up (github drops schedules under load)
+    - cron: "7 16 * * 1-5"    # third catch-up — idempotency guard makes extras free
+    - cron: "43 17 * * 1-5"   # midday stop management, ~1:43pm ET
+    - cron: "43 22 * * 1-5"   # outcome scoring, weekdays ~22:43 UTC (after close ET)
+    - cron: "13 14 * * 6"     # weekly review, saturdays ~14:13 UTC
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "engine mode"
+        required: true
+        default: "daily"
+        type: choice
+        options: [daily, score, weekly, manage]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install cpu torch with retries and a pypi fallback
+        run: |
+          for i in 1 2 3; do
+            pip install torch --index-url https://download.pytorch.org/whl/cpu && break
+            echo "pytorch cpu index failed, retry $i in 30s"
+            sleep 30
+          done
+          python -c "import torch" 2>/dev/null || pip install torch
+
+      - name: install remaining dependencies
+        run: pip install -r requirements.txt transformers
+
+      - name: resolve mode from trigger
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "37 12 * * 1-5" ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "7 14 * * 1-5" ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "7 15 * * 1-5" ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "7 16 * * 1-5" ]; then
+            echo "mode=daily" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "43 17 * * 1-5" ]; then
+            echo "mode=manage" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "43 22 * * 1-5" ]; then
+            echo "mode=score" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=weekly" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: run engine
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          LIVE_TRADING_CONFIRM: ${{ secrets.LIVE_TRADING_CONFIRM }}
+          PAPER_TRADING: ${{ vars.PAPER_TRADING }}
+          TRADING_MODE: ${{ vars.TRADING_MODE }}
+          DEBATE_BUDGET: ${{ vars.DEBATE_BUDGET }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          EXPLORE_SLOTS: ${{ vars.EXPLORE_SLOTS }}
+          STOCK_LENS_BASE: ${{ github.workspace }}/stock-lens-data
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: python -m engine.run_daily --mode "${{ steps.mode.outputs.mode }}"

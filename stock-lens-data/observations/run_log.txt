@@ -1,0 +1,586 @@
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+downloading dataset from kaggle...
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 2 — FEATURE ENGINEERING, LABELS, SPLIT
+======================================================================
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+data files already present
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+sector null count after merge: 0
+  [plot saved] s2_tickers_per_sector.png
+computing technical indicators...
+shape after indicators: (851264, 20)
+
+======================================================================
+STAGE 2B — ENHANCED FEATURES + MULTI-HORIZON LABELS
+======================================================================
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+data files already present
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 2 — FEATURE ENGINEERING, LABELS, SPLIT
+======================================================================
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+data files already present
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+sector null count after merge: 0
+  [plot saved] s2_tickers_per_sector.png
+computing technical indicators...
+shape after indicators: (851264, 21)
+columns after indicators: ['date', 'symbol', 'open', 'close', 'low', 'high', 'volume', 'sector', 'ma10', 'ma30', 'ma50', 'rsi', 'vol_ratio', 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9', 'BBL_20_2.0_2.0', 'BBM_20_2.0_2.0', 'BBU_20_2.0_2.0', 'BBB_20_2.0_2.0', 'BBP_20_2.0_2.0']
+shape after fundamentals merge: (852272, 30)
+shape after cleanup: (827222, 30)
+  [plot saved] s2_label_distribution.png
+label distribution:
+label
+Neutral   56.7000
+Up        22.8000
+Down      20.5000
+Name: proportion, dtype: float64
+  [plot saved] s2_AAPL_indicator_panel.png
+  [plot saved] s2_feature_correlation.png
+train: (575682, 32) | val: (124525, 32) | test: (126514, 32)
+saved master/train/val/test csv
+stage 2 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 2B — ENHANCED FEATURES + MULTI-HORIZON LABELS
+======================================================================
+adding lagged features...
+adding return features...
+added relative features
+adding multi-horizon labels...
+  [plot saved] s2b_horizon_label_distributions.png
+label_1d balance:
+label_1d
+Neutral   56.7000
+Up        22.8000
+Down      20.4000
+Name: proportion, dtype: float64
+label_5d balance:
+label_5d
+Neutral   50.2000
+Up        27.8000
+Down      22.0000
+Name: proportion, dtype: float64
+label_10d balance:
+label_10d
+Neutral   51.9000
+Up        27.9000
+Down      20.2000
+Name: proportion, dtype: float64
+imputed fundamentals — remaining fundamental nulls: 0
+dropped 10,020 rows with nulls in essential columns
+enhanced master shape: (816701, 66)
+saved master_enhanced.csv
+stage 2b complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+training random forest...
+random forest — validation:
+              precision    recall  f1-score   support
+
+        Down       0.26      0.13      0.17     27715
+     Neutral       0.62      0.69      0.65     69393
+          Up       0.29      0.36      0.32     27417
+
+    accuracy                           0.49    124525
+   macro avg       0.39      0.39      0.38    124525
+weighted avg       0.47      0.49      0.47    124525
+
+training xgboost...
+xgboost — validation:
+              precision    recall  f1-score   support
+
+        Down       0.27      0.19      0.22     27715
+     Neutral       0.63      0.64      0.64     69393
+          Up       0.28      0.35      0.32     27417
+
+    accuracy                           0.48    124525
+   macro avg       0.39      0.39      0.39    124525
+weighted avg       0.47      0.48      0.47    124525
+
+  [plot saved] s3_rf_confusion_val.png
+  [plot saved] s3_xgb_confusion_val.png
+  [plot saved] s3_rf_feature_importance.png
+best baseline model: xgb
+xgb — TEST:
+              precision    recall  f1-score   support
+
+        Down       0.25      0.22      0.23     25058
+     Neutral       0.67      0.63      0.65     72746
+          Up       0.29      0.37      0.33     28710
+
+    accuracy                           0.49    126514
+   macro avg       0.40      0.41      0.40    126514
+weighted avg       0.50      0.49      0.49    126514
+
+  [plot saved] s3_xgb_confusion_test.png
+saved baseline models
+stage 3 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 4 — SEQUENCE MODELS (LSTM, GRU, TCN, 1D-CNN, TRANSFORMER)
+======================================================================
+pytorch not installed — run: pip install torch
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+data files already present
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 2 — FEATURE ENGINEERING, LABELS, SPLIT
+======================================================================
+
+======================================================================
+STAGE 1 — LOADING AND INSPECTING RAW DATA
+======================================================================
+data files already present
+prices shape      : (851264, 7)
+fundamentals shape: (1781, 11)
+securities shape  : (505, 2)
+date range        : 2010-01-04 to 2016-12-30
+unique tickers    : 501
+null counts in prices:
+date      0
+symbol    0
+open      0
+close     0
+low       0
+high      0
+volume    0
+dtype: int64
+  [plot saved] s1_trading_days_per_ticker.png
+tickers with < 1000 trading days: 18
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+sector null count after merge: 0
+  [plot saved] s2_tickers_per_sector.png
+computing technical indicators...
+shape after indicators: (851264, 21)
+columns after indicators: ['date', 'symbol', 'open', 'close', 'low', 'high', 'volume', 'sector', 'ma10', 'ma30', 'ma50', 'rsi', 'vol_ratio', 'MACD_12_26_9', 'MACDh_12_26_9', 'MACDs_12_26_9', 'BBL_20_2.0_2.0', 'BBM_20_2.0_2.0', 'BBU_20_2.0_2.0', 'BBB_20_2.0_2.0', 'BBP_20_2.0_2.0']
+shape after fundamentals merge: (852272, 30)
+shape after cleanup: (827222, 30)
+  [plot saved] s2_label_distribution.png
+label distribution:
+label
+Neutral   56.7000
+Up        22.8000
+Down      20.5000
+Name: proportion, dtype: float64
+  [plot saved] s2_AAPL_indicator_panel.png
+  [plot saved] s2_feature_correlation.png
+train: (575682, 32) | val: (124525, 32) | test: (126514, 32)
+saved master/train/val/test csv
+stage 2 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 2B — ENHANCED FEATURES + MULTI-HORIZON LABELS
+======================================================================
+adding lagged features...
+adding return features...
+added relative features
+adding multi-horizon labels...
+  [plot saved] s2b_horizon_label_distributions.png
+label_1d balance:
+label_1d
+Neutral   56.7000
+Up        22.8000
+Down      20.4000
+Name: proportion, dtype: float64
+label_5d balance:
+label_5d
+Neutral   50.2000
+Up        27.8000
+Down      22.0000
+Name: proportion, dtype: float64
+label_10d balance:
+label_10d
+Neutral   51.9000
+Up        27.9000
+Down      20.2000
+Name: proportion, dtype: float64
+imputed fundamentals — remaining fundamental nulls: 0
+dropped 10,020 rows with nulls in essential columns
+enhanced master shape: (816701, 66)
+saved master_enhanced.csv
+stage 2b complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+training random forest...
+random forest — validation:
+              precision    recall  f1-score   support
+
+        Down       0.26      0.13      0.17     27715
+     Neutral       0.62      0.69      0.65     69393
+          Up       0.29      0.36      0.32     27417
+
+    accuracy                           0.49    124525
+   macro avg       0.39      0.39      0.38    124525
+weighted avg       0.47      0.49      0.47    124525
+
+training xgboost...
+xgboost — validation:
+              precision    recall  f1-score   support
+
+        Down       0.27      0.19      0.22     27715
+     Neutral       0.63      0.64      0.64     69393
+          Up       0.28      0.35      0.32     27417
+
+    accuracy                           0.48    124525
+   macro avg       0.39      0.39      0.39    124525
+weighted avg       0.47      0.48      0.47    124525
+
+  [plot saved] s3_rf_confusion_val.png
+  [plot saved] s3_xgb_confusion_val.png
+  [plot saved] s3_rf_feature_importance.png
+best baseline model: xgb
+xgb — TEST:
+              precision    recall  f1-score   support
+
+        Down       0.25      0.22      0.23     25058
+     Neutral       0.67      0.63      0.65     72746
+          Up       0.29      0.37      0.33     28710
+
+    accuracy                           0.49    126514
+   macro avg       0.40      0.41      0.40    126514
+weighted avg       0.50      0.49      0.49    126514
+
+  [plot saved] s3_xgb_confusion_test.png
+saved baseline models
+stage 3 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 4 — SEQUENCE MODELS (LSTM, GRU, TCN, 1D-CNN, TRANSFORMER)
+======================================================================
+cuda available: True
+using 53 features per timestep, window=30
+
+======================================================================
+POOLED SEQUENCES (all tickers, train/val/test)
+======================================================================
+building pooled sequences for train, val, test...
+train seq: (555592, 30, 53) | val seq: (109046, 30, 53) | test seq: (105935, 30, 53)
+  pooled | lstm        | regression     | VAL macro_f1=0.2899
+  pooled | lstm        | classification | VAL macro_f1=0.4373
+  pooled | gru         | regression     | VAL macro_f1=0.3945
+  pooled | gru         | classification | VAL macro_f1=0.4454
+  pooled | tcn         | regression     | VAL macro_f1=0.1544
+  pooled | tcn         | classification | VAL macro_f1=0.4479
+  pooled | cnn1d       | regression     | VAL macro_f1=0.2877
+  pooled | cnn1d       | classification | VAL macro_f1=0.4639
+  pooled | transformer | regression     | VAL macro_f1=0.1544
+  pooled | transformer | classification | VAL macro_f1=0.4578
+
+validation winner: cnn1d/classification (val macro_f1=0.4639)
+[TEST] cnn1d/classification — held-out test macro_f1 = 0.4679
+[TEST] per-class report:
+              precision    recall  f1-score   support
+
+        Down       0.40      0.40      0.40     34523
+     Neutral       0.59      0.62      0.60     36154
+          Up       0.41      0.39      0.40     35258
+
+    accuracy                           0.47    105935
+   macro avg       0.47      0.47      0.47    105935
+weighted avg       0.47      0.47      0.47    105935
+
+  [plot saved] s4_TEST_cnn1d_classification.png
+refitting winner cnn1d/classification on train+val for deployment...
+saved seq_model.pt, seq_meta.pkl, seq_scaler.pkl for the chatbot
+
+======================================================================
+PER-STOCK SEQUENCES (sample of 40 tickers, val)
+======================================================================
+  per-stock | lstm        | regression     | avg val macro_f1=0.2375 (40 stocks)
+  per-stock | lstm        | classification | avg val macro_f1=0.2505 (40 stocks)
+  per-stock | gru         | regression     | avg val macro_f1=0.2191 (40 stocks)
+  per-stock | gru         | classification | avg val macro_f1=0.2503 (40 stocks)
+  per-stock | tcn         | regression     | avg val macro_f1=0.2160 (40 stocks)
+  per-stock | tcn         | classification | avg val macro_f1=0.2188 (40 stocks)
+  per-stock | cnn1d       | regression     | avg val macro_f1=0.2192 (40 stocks)
+  per-stock | cnn1d       | classification | avg val macro_f1=0.2263 (40 stocks)
+  per-stock | transformer | regression     | avg val macro_f1=0.2408 (40 stocks)
+  per-stock | transformer | classification | avg val macro_f1=0.2426 (40 stocks)
+
+SEQUENCE MODEL RESULTS:
+architecture           head granularity split  macro_f1
+        lstm     regression      pooled   val    0.2899
+        lstm classification      pooled   val    0.4373
+         gru     regression      pooled   val    0.3945
+         gru classification      pooled   val    0.4454
+         tcn     regression      pooled   val    0.1544
+         tcn classification      pooled   val    0.4479
+       cnn1d     regression      pooled   val    0.2877
+       cnn1d classification      pooled   val    0.4639
+ transformer     regression      pooled   val    0.1544
+ transformer classification      pooled   val    0.4578
+       cnn1d classification      pooled  test    0.4679
+        lstm     regression   per_stock   val    0.2375
+        lstm classification   per_stock   val    0.2505
+         gru     regression   per_stock   val    0.2191
+         gru classification   per_stock   val    0.2503
+         tcn     regression   per_stock   val    0.2160
+         tcn classification   per_stock   val    0.2188
+       cnn1d     regression   per_stock   val    0.2192
+       cnn1d classification   per_stock   val    0.2263
+ transformer     regression   per_stock   val    0.2408
+ transformer classification   per_stock   val    0.2426
+  [plot saved] s4_pooled_sequence_macro_f1.png
+  [plot saved] s4_granularity_comparison.png
+
+held-out TEST result: cnn1d/classification = 0.4679
+best tabular (stage 3b) test was ~0.39 — sequence models on test beat it
+stage 4 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 5 — CHATBOT
+======================================================================
+sequence model loaded: True
+random forest loaded: True
+anthropic api key present: False
+
+CLI chat ready. type 'quit' to exit.
+format: TICKER DATE [model]   e.g.  AAPL 2016-06-15 sequence
+chatbot session ended
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 6 — OUT-OF-SAMPLE EVALUATION (yfinance 2017-2025)
+======================================================================
+downloading 505 tickers from yfinance (2016-06-01 to 2025-12-31) — takes a few minutes...
+downloaded rows: 960,898 across 403 tickers
+rebuilding indicators on out-of-sample data...
+
+random_forest OOS overall macro_f1 = 0.3574
+random_forest OOS per-class report:
+              precision    recall  f1-score   support
+
+        Down       0.25      0.47      0.32    202164
+     Neutral       0.65      0.34      0.45    475794
+          Up       0.28      0.34      0.30    223313
+
+    accuracy                           0.37    901271
+   macro avg       0.39      0.38      0.36    901271
+weighted avg       0.47      0.37      0.38    901271
+
+
+sequence (cnn1d) OOS overall macro_f1 = 0.3526
+sequence OOS per-class report:
+              precision    recall  f1-score   support
+
+        Down       0.24      0.23      0.23    200469
+     Neutral       0.55      0.53      0.54    467383
+          Up       0.27      0.30      0.28    220926
+
+    accuracy                           0.41    888778
+   macro avg       0.35      0.35      0.35    888778
+weighted avg       0.41      0.41      0.41    888778
+
+
+OOS RESULTS BY YEAR:
+         model  year  macro_f1
+ random_forest  2017    0.3587
+ random_forest  2018    0.3645
+ random_forest  2019    0.3560
+ random_forest  2020    0.3665
+ random_forest  2021    0.3529
+ random_forest  2022    0.3364
+ random_forest  2023    0.3278
+ random_forest  2024    0.3347
+ random_forest  2025    0.3264
+sequence_cnn1d  2017    0.3272
+sequence_cnn1d  2018    0.3441
+sequence_cnn1d  2019    0.3392
+sequence_cnn1d  2020    0.3589
+sequence_cnn1d  2021    0.3512
+sequence_cnn1d  2022    0.3395
+sequence_cnn1d  2023    0.3435
+sequence_cnn1d  2024    0.3445
+sequence_cnn1d  2025    0.3527
+  [plot saved] s6_oos_macro_f1_by_year.png
+stage 6 complete
+
+ALL REQUESTED STAGES COMPLETE
+observations and plots saved in: /workspace/stock-lens-data/observations
+
+======================================================================
+STAGE 5 — CHATBOT (natural language)
+======================================================================
+sequence model loaded: True
+random forest loaded: True
+
+chat ready — ask naturally, e.g. 'Will Apple go up tomorrow?'
+type 'quit' to exit
+chat session ended
+
+======================================================================
+STAGE 5 — CHATBOT (natural language)
+======================================================================
+sequence model loaded: True
+random forest loaded: True
+
+chat ready — ask naturally, e.g. 'Will Apple go up tomorrow?'
+type 'quit' to exit
+sequence model unavailable (No module named 'sequence_models')
+downloading 60 tickers from yfinance (2025-11-10 to 2026-07-09)...
+downloaded 9,840 rows across 60 tickers
+rebuilding features on out-of-sample data...
+screener: scanned 60 tickers, top: ['AMD', 'AMAT', 'APH', 'ANET', 'AZO']

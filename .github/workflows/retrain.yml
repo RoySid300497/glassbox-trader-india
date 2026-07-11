@@ -1,0 +1,64 @@
+name: retrain
+
+on:
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "ticker limit for a faster run (blank = all)"
+        required: false
+        default: "200"
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install cpu torch with retries and a pypi fallback
+        run: |
+          for i in 1 2 3; do
+            pip install torch --index-url https://download.pytorch.org/whl/cpu && break
+            echo "pytorch cpu index failed, retry $i in 30s"
+            sleep 30
+          done
+          python -c "import torch" 2>/dev/null || pip install torch
+
+      - name: install remaining dependencies
+        run: pip install -r requirements.txt
+
+      - name: retrain behind the challenger gate
+        env:
+          STOCK_LENS_BASE: ${{ github.workspace }}/stock-lens-data
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          if [ -n "${{ inputs.tickers }}" ]; then
+            python -m pipeline.retrain_cnn --tickers "${{ inputs.tickers }}"
+          else
+            python -m pipeline.retrain_cnn
+          fi
+
+      - name: commit new artifacts when the challenger won
+        run: |
+          git config user.name "engine-bot"
+          git config user.email "actions@github.com"
+          git add stock-lens-data/models/seq_model.pt \
+                  stock-lens-data/models/seq_meta.pkl \
+                  stock-lens-data/models/seq_scaler.pkl \
+                  stock-lens-data/models/rf_model.pkl \
+                  stock-lens-data/models/scaler.pkl \
+                  stock-lens-data/models/imputer.pkl \
+                  stock-lens-data/models/label_encoder.pkl \
+                  stock-lens-data/models/feature_cols.pkl \
+                  stock-lens-data/models/shadow \
+                  stock-lens-data/models/archive || true
+          git diff --cached --quiet || \
+            (git commit -m "retrain: deploy challenger model" && git push)
