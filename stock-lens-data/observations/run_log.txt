@@ -877,3 +877,139 @@ architecture           head granularity split  macro_f1
   [plot saved] s4_pooled_sequence_macro_f1.png
   [plot saved] s4_granularity_comparison.png
 stage 4 complete
+
+======================================================================
+STAGE 2B — ENHANCED FEATURES + MULTI-HORIZON LABELS
+======================================================================
+adding lagged features...
+adding return features...
+FII/DII history too short — training on price features only
+adding multi-horizon labels...
+  [plot saved] s2b_horizon_label_distributions.png
+dropped 480 rows with null features
+  rows with label_1d: 137,536 (0 lack it — kept for scoring)
+  rows with label_5d: 137,536 (0 lack it — kept for scoring)
+  rows with label_10d: 137,536 (0 lack it — kept for scoring)
+enhanced master shape: (137536, 66)
+stage 2b complete
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+training random forest...
+random forest — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.22      0.21      2925
+     Neutral       0.63      0.65      0.64     10120
+          Up       0.23      0.18      0.20      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.35      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+training xgboost...
+xgboost — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.21      0.20      2925
+     Neutral       0.63      0.65      0.64     10120
+          Up       0.25      0.21      0.23      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.36      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+  [plot saved] s3_rf_confusion_val.png
+  [plot saved] s3_xgb_confusion_val.png
+  [plot saved] s3_rf_feature_importance.png
+best baseline model: xgb
+xgb — TEST:
+              precision    recall  f1-score   support
+
+        Down       0.24      0.23      0.23      5087
+     Neutral       0.62      0.61      0.62     14606
+          Up       0.25      0.27      0.26      5409
+
+    accuracy                           0.46     25102
+   macro avg       0.37      0.37      0.37     25102
+weighted avg       0.46      0.46      0.46     25102
+
+saved baseline models
+stage 3 complete
+
+======================================================================
+STAGE 4 — SEQUENCE MODELS
+======================================================================
+cuda available: False
+
+======================================================================
+POOLED SEQUENCES (train/val/test)
+======================================================================
+train seq: (94338, 30, 44) | val: (15120, 30, 44) | test: (23614, 30, 44)
+  pooled | lstm        | regression     | VAL f1=0.3802
+  pooled | lstm        | classification | VAL f1=0.4899
+  pooled | gru         | regression     | VAL f1=0.3156
+  pooled | gru         | classification | VAL f1=0.4753
+  pooled | tcn         | regression     | VAL f1=0.2055
+  pooled | tcn         | classification | VAL f1=0.4897
+  pooled | cnn1d       | regression     | VAL f1=0.3302
+  pooled | cnn1d       | classification | VAL f1=0.4884
+  pooled | transformer | regression     | VAL f1=0.2874
+  pooled | transformer | classification | VAL f1=0.4765
+
+validation winner: lstm/classification (val f1=0.4899)
+[TEST] lstm/classification — held-out test macro_f1 = 0.4679
+              precision    recall  f1-score   support
+
+        Down       0.44      0.24      0.31      6900
+     Neutral       0.63      0.75      0.68      9865
+          Up       0.38      0.45      0.41      6849
+
+    accuracy                           0.51     23614
+   macro avg       0.48      0.48      0.47     23614
+weighted avg       0.50      0.51      0.49     23614
+
+refitting winner on train+val for deployment...
+saved seq_model.pt, seq_meta.pkl, seq_scaler.pkl
+
+======================================================================
+PER-STOCK SEQUENCES (sample of 40)
+======================================================================
+  per-stock | lstm        | regression     | avg f1=0.2813
+  per-stock | lstm        | classification | avg f1=0.2622
+  per-stock | gru         | regression     | avg f1=0.2709
+  per-stock | gru         | classification | avg f1=0.2720
+  per-stock | tcn         | regression     | avg f1=0.2173
+  per-stock | tcn         | classification | avg f1=0.2286
+  per-stock | cnn1d       | regression     | avg f1=0.2488
+  per-stock | cnn1d       | classification | avg f1=0.2491
+  per-stock | transformer | regression     | avg f1=0.2489
+  per-stock | transformer | classification | avg f1=0.2626
+
+SEQUENCE MODEL RESULTS:
+architecture           head granularity split  macro_f1
+        lstm     regression      pooled   val  0.380225
+        lstm classification      pooled   val  0.489950
+         gru     regression      pooled   val  0.315618
+         gru classification      pooled   val  0.475331
+         tcn     regression      pooled   val  0.205481
+         tcn classification      pooled   val  0.489743
+       cnn1d     regression      pooled   val  0.330216
+       cnn1d classification      pooled   val  0.488423
+ transformer     regression      pooled   val  0.287360
+ transformer classification      pooled   val  0.476495
+        lstm classification      pooled  test  0.467906
+        lstm     regression   per_stock   val  0.281292
+        lstm classification   per_stock   val  0.262157
+         gru     regression   per_stock   val  0.270895
+         gru classification   per_stock   val  0.271984
+         tcn     regression   per_stock   val  0.217338
+         tcn classification   per_stock   val  0.228555
+       cnn1d     regression   per_stock   val  0.248801
+       cnn1d classification   per_stock   val  0.249148
+ transformer     regression   per_stock   val  0.248917
+ transformer classification   per_stock   val  0.262592
+  [plot saved] s4_pooled_sequence_macro_f1.png
+  [plot saved] s4_granularity_comparison.png
+stage 4 complete
