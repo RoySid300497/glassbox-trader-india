@@ -2,7 +2,7 @@ name: universe
 
 on:
   schedule:
-    - cron: "23 11 1 * *"   # refreshing constituents on the 1st of each month
+    - cron: "23 4 1 * *"   # refreshing constituents on the 1st of each month
   workflow_dispatch:
 
 permissions:

@@ -2,13 +2,13 @@ name: engine
 
 on:
   schedule:
-    - cron: "37 12 * * 1-5"   # daily decisions, weekdays ~12:37 UTC (off-peak minute)
-    - cron: "7 14 * * 1-5"    # catch-up daily, fires only if the first was dropped
-    - cron: "7 15 * * 1-5"    # second catch-up (github drops schedules under load)
-    - cron: "7 16 * * 1-5"    # third catch-up — idempotency guard makes extras free
-    - cron: "43 17 * * 1-5"   # midday stop management, ~1:43pm ET
-    - cron: "43 22 * * 1-5"   # outcome scoring, weekdays ~22:43 UTC (after close ET)
-    - cron: "13 14 * * 6"     # weekly review, saturdays ~14:13 UTC
+    - cron: "3 3 * * 1-5"     # daily decisions ~08:33 IST, ~40min pre-open (NSE opens 09:15 IST = 03:45 UTC)
+    - cron: "7 4 * * 1-5"     # catch-up, fires only if the first was dropped
+    - cron: "7 5 * * 1-5"     # second catch-up (github drops schedules under load)
+    - cron: "7 6 * * 1-5"     # third catch-up — idempotency guard makes extras free
+    - cron: "13 7 * * 1-5"    # midday stop management, ~12:43 IST
+    - cron: "43 10 * * 1-5"   # outcome scoring ~16:13 IST (after NSE close 15:30 IST = 10:00 UTC)
+    - cron: "13 11 * * 6"     # weekly review, saturdays ~16:43 IST
   workflow_dispatch:
     inputs:
       mode:
@@ -51,17 +51,17 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "37 12 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "3 3 * * 1-5" ]; then
             echo "mode=daily" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "7 14 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "7 4 * * 1-5" ]; then
             echo "mode=daily" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "7 15 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "7 5 * * 1-5" ]; then
             echo "mode=daily" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "7 16 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "7 6 * * 1-5" ]; then
             echo "mode=daily" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "43 17 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "13 7 * * 1-5" ]; then
             echo "mode=manage" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "43 22 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "43 10 * * 1-5" ]; then
             echo "mode=score" >> "$GITHUB_OUTPUT"
           else
             echo "mode=weekly" >> "$GITHUB_OUTPUT"

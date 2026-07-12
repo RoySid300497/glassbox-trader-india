@@ -3,16 +3,28 @@
 import os
 
 # resolving the base folder from the environment so machines can differ
-BASE_PATH = os.environ.get("STOCK_LENS_BASE", os.path.abspath("./stock-lens"))
+BASE_PATH = os.environ.get("GLASSBOX_INDIA_BASE",
+                           os.environ.get("STOCK_LENS_BASE",
+                                          os.path.abspath("./stock-lens-data")))
 DATA_PATH = os.path.join(BASE_PATH, "data")
 MODEL_PATH = os.path.join(BASE_PATH, "models")
 OBS_PATH = os.path.join(BASE_PATH, "observations")
 for _p in (DATA_PATH, MODEL_PATH, OBS_PATH):
     os.makedirs(_p, exist_ok=True)
 
-KAGGLE_DATASET = "dgawlik/nyse"
+# india / NSE market settings
+MARKET = "IN"
+EXCHANGE_SUFFIX = ".NS"          # yfinance National Stock Exchange suffix
+TIMEZONE = "Asia/Kolkata"
+CURRENCY = "INR"
+YF_HISTORY_YEARS = 12            # pull enough for a decade of usable rows
+UNIVERSE_NAME = "NIFTY50"
+
+# kaggle is unused on NSE (yfinance replaces it) but kept so any leftover
+# import does not break
+KAGGLE_DATASET = ""
 KAGGLE_FILES = ["prices-split-adjusted.csv", "fundamentals.csv",
-                "securities.csv", "prices.csv"]
+                "securities.csv"]
 
 FUNDAMENTAL_COLS = ["Ticker Symbol", "Period Ending", "Earnings Per Share",
                     "Total Revenue", "Net Income", "Total Assets",
@@ -38,8 +50,8 @@ HORIZONS = {"1d": {"days": 1, "threshold": 0.01},
             "5d": {"days": 5, "threshold": 0.02},
             "10d": {"days": 10, "threshold": 0.03}}
 
-TRAIN_END = "2015-01-01"
-VAL_END = "2016-01-01"
+TRAIN_END = "2023-01-01"
+VAL_END = "2024-06-01"
 RANDOM_STATE = 42
 
 SEQ_WINDOW = 30
@@ -48,6 +60,6 @@ SEQ_BATCH = 256
 SEQ_THRESHOLD = 0.01
 PER_STOCK_SAMPLE = 40
 
-OOS_START = "2016-06-01"
-OOS_EVAL_FROM = "2017-01-01"
-OOS_END = "2025-12-31"
+OOS_START = "2024-06-01"
+OOS_EVAL_FROM = "2024-06-01"
+OOS_END = "2026-12-31"

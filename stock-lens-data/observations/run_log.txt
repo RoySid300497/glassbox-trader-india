@@ -584,3 +584,296 @@ downloading 60 tickers from yfinance (2025-11-10 to 2026-07-09)...
 downloaded 9,840 rows across 60 tickers
 rebuilding features on out-of-sample data...
 screener: scanned 60 tickers, top: ['AMD', 'AMAT', 'APH', 'ANET', 'AZO']
+
+======================================================================
+STAGE 1 — LOADING NSE DATA (yfinance)
+======================================================================
+downloading 50 NSE tickers from yfinance (12y)...
+cached prices to /Users/sidroy/Desktop/venv/ml/project/glassbox-trader-india/stock-lens-data/data/prices-split-adjusted.csv
+prices shape      : (142128, 7)
+fundamentals shape: (624, 11)
+securities shape  : (50, 2)
+date range        : 2014-07-10 to 2026-07-10
+unique tickers    : 48
+  [plot saved] s1_trading_days_per_ticker.png
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+
+======================================================================
+STAGE 2 — FEATURE ENGINEERING, LABELS, SPLIT
+======================================================================
+
+======================================================================
+STAGE 1 — LOADING NSE DATA (yfinance)
+======================================================================
+downloading 50 NSE tickers from yfinance (12y)...
+  could not fetch LTIM (tried ['LTIM.NS', 'LTIMINDTREE.NS', 'MINDTREE.NS']); skipping — training proceeds without it
+  could not fetch TATAMOTORS (tried ['TATAMOTORS.NS', 'TATAMTRDVR.NS', 'TML.NS']); skipping — training proceeds without it
+cached prices to /Users/sidroy/Desktop/venv/ml/project/glassbox-trader-india/stock-lens-data/data/prices-split-adjusted.csv
+prices shape      : (142128, 7)
+fundamentals shape: (624, 11)
+securities shape  : (50, 2)
+date range        : 2014-07-10 to 2026-07-10
+unique tickers    : 48
+  [plot saved] s1_trading_days_per_ticker.png
+  [plot saved] s1_close_price_distribution.png
+  [plot saved] s1_sample_ticker_prices.png
+  [plot saved] s1_total_market_volume.png
+stage 1 complete
+  [plot saved] s2_tickers_per_sector.png
+computing technical indicators...
+shape after indicators: (142128, 21)
+shape after cleanup: (138064, 30)
+  [plot saved] s2_label_distribution.png
+label distribution:
+label
+Neutral    53.0
+Up         24.6
+Down       22.4
+Name: proportion, dtype: float64
+  [plot saved] s2_feature_correlation.png
+train: (96306, 32) | val: (16608, 32) | test: (25102, 32)
+stage 2 complete
+
+======================================================================
+STAGE 2B — ENHANCED FEATURES + MULTI-HORIZON LABELS
+======================================================================
+adding lagged features...
+adding return features...
+adding multi-horizon labels...
+  [plot saved] s2b_horizon_label_distributions.png
+dropped 480 rows with null features
+  rows with label_1d: 137,536 (0 lack it — kept for scoring)
+  rows with label_5d: 137,536 (0 lack it — kept for scoring)
+  rows with label_10d: 137,536 (0 lack it — kept for scoring)
+enhanced master shape: (137536, 66)
+stage 2b complete
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+training random forest...
+random forest — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.21      0.20      2925
+     Neutral       0.63      0.66      0.64     10120
+          Up       0.23      0.18      0.21      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.35      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+training xgboost...
+xgboost — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.21      0.20      2925
+     Neutral       0.63      0.65      0.64     10120
+          Up       0.25      0.21      0.23      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.36      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+  [plot saved] s3_rf_confusion_val.png
+  [plot saved] s3_xgb_confusion_val.png
+
+======================================================================
+STAGE 3 — BASELINE CLASSIFICATION (POOLED, NEXT-DAY)
+======================================================================
+training random forest...
+random forest — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.22      0.21      2925
+     Neutral       0.63      0.65      0.64     10120
+          Up       0.23      0.18      0.20      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.35      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+training xgboost...
+xgboost — validation:
+              precision    recall  f1-score   support
+
+        Down       0.19      0.21      0.20      2925
+     Neutral       0.63      0.65      0.64     10120
+          Up       0.25      0.21      0.23      3563
+
+    accuracy                           0.48     16608
+   macro avg       0.36      0.35      0.35     16608
+weighted avg       0.47      0.48      0.47     16608
+
+  [plot saved] s3_rf_confusion_val.png
+  [plot saved] s3_xgb_confusion_val.png
+  [plot saved] s3_rf_feature_importance.png
+best baseline model: xgb
+xgb — TEST:
+              precision    recall  f1-score   support
+
+        Down       0.24      0.23      0.23      5087
+     Neutral       0.62      0.61      0.62     14606
+          Up       0.25      0.27      0.26      5409
+
+    accuracy                           0.46     25102
+   macro avg       0.37      0.37      0.37     25102
+weighted avg       0.46      0.46      0.46     25102
+
+saved baseline models
+stage 3 complete
+
+======================================================================
+STAGE 4 — SEQUENCE MODELS
+======================================================================
+cuda available: False
+
+======================================================================
+POOLED SEQUENCES (train/val/test)
+======================================================================
+train seq: (94338, 30, 53) | val: (15120, 30, 53) | test: (23614, 30, 53)
+  pooled | lstm        | regression     | VAL f1=0.2013
+  pooled | lstm        | classification | VAL f1=0.1449
+  pooled | gru         | regression     | VAL f1=0.2013
+  pooled | gru         | classification | VAL f1=0.1449
+  pooled | tcn         | regression     | VAL f1=0.2013
+  pooled | tcn         | classification | VAL f1=0.1449
+  pooled | cnn1d       | regression     | VAL f1=0.2013
+  pooled | cnn1d       | classification | VAL f1=0.1449
+  pooled | transformer | regression     | VAL f1=0.2013
+  pooled | transformer | classification | VAL f1=0.1449
+
+validation winner: lstm/regression (val f1=0.2013)
+[TEST] lstm/regression — held-out test macro_f1 = 0.1964
+              precision    recall  f1-score   support
+
+        Down       0.00      0.00      0.00      6900
+     Neutral       0.42      1.00      0.59      9865
+          Up       0.00      0.00      0.00      6849
+
+    accuracy                           0.42     23614
+   macro avg       0.14      0.33      0.20     23614
+weighted avg       0.17      0.42      0.25     23614
+
+refitting winner on train+val for deployment...
+saved seq_model.pt, seq_meta.pkl, seq_scaler.pkl
+
+======================================================================
+PER-STOCK SEQUENCES (sample of 40)
+======================================================================
+  per-stock | lstm        | regression     | avg f1=0.1673
+  per-stock | lstm        | classification | avg f1=0.1547
+  per-stock | gru         | regression     | avg f1=0.1673
+  per-stock | gru         | classification | avg f1=0.1547
+  per-stock | tcn         | regression     | avg f1=0.1673
+  per-stock | tcn         | classification | avg f1=0.1547
+  per-stock | cnn1d       | regression     | avg f1=0.1673
+  per-stock | cnn1d       | classification | avg f1=0.1547
+  per-stock | transformer | regression     | avg f1=0.1673
+  per-stock | transformer | classification | avg f1=0.1547
+
+SEQUENCE MODEL RESULTS:
+architecture           head granularity split  macro_f1
+        lstm     regression      pooled   val  0.201314
+        lstm classification      pooled   val  0.144901
+         gru     regression      pooled   val  0.201314
+         gru classification      pooled   val  0.144901
+         tcn     regression      pooled   val  0.201314
+         tcn classification      pooled   val  0.144901
+       cnn1d     regression      pooled   val  0.201314
+       cnn1d classification      pooled   val  0.144901
+ transformer     regression      pooled   val  0.201314
+ transformer classification      pooled   val  0.144901
+        lstm     regression      pooled  test  0.196442
+        lstm     regression   per_stock   val  0.167343
+        lstm classification   per_stock   val  0.154686
+         gru     regression   per_stock   val  0.167343
+         gru classification   per_stock   val  0.154686
+         tcn     regression   per_stock   val  0.167343
+         tcn classification   per_stock   val  0.154686
+       cnn1d     regression   per_stock   val  0.167343
+       cnn1d classification   per_stock   val  0.154686
+ transformer     regression   per_stock   val  0.167343
+ transformer classification   per_stock   val  0.154686
+  [plot saved] s4_pooled_sequence_macro_f1.png
+  [plot saved] s4_granularity_comparison.png
+stage 4 complete
+
+======================================================================
+STAGE 4 — SEQUENCE MODELS
+======================================================================
+cuda available: False
+
+======================================================================
+POOLED SEQUENCES (train/val/test)
+======================================================================
+train seq: (94338, 30, 44) | val: (15120, 30, 44) | test: (23614, 30, 44)
+  pooled | lstm        | regression     | VAL f1=0.4056
+  pooled | lstm        | classification | VAL f1=0.4877
+  pooled | gru         | regression     | VAL f1=0.3320
+  pooled | gru         | classification | VAL f1=0.4758
+  pooled | tcn         | regression     | VAL f1=0.2915
+  pooled | tcn         | classification | VAL f1=0.4946
+  pooled | cnn1d       | regression     | VAL f1=0.3758
+  pooled | cnn1d       | classification | VAL f1=0.4957
+  pooled | transformer | regression     | VAL f1=0.2303
+  pooled | transformer | classification | VAL f1=0.4810
+
+validation winner: cnn1d/classification (val f1=0.4957)
+[TEST] cnn1d/classification — held-out test macro_f1 = 0.4611
+              precision    recall  f1-score   support
+
+        Down       0.42      0.21      0.28      6900
+     Neutral       0.63      0.75      0.68      9865
+          Up       0.38      0.47      0.42      6849
+
+    accuracy                           0.51     23614
+   macro avg       0.48      0.48      0.46     23614
+weighted avg       0.50      0.51      0.49     23614
+
+refitting winner on train+val for deployment...
+saved seq_model.pt, seq_meta.pkl, seq_scaler.pkl
+
+======================================================================
+PER-STOCK SEQUENCES (sample of 40)
+======================================================================
+  per-stock | lstm        | regression     | avg f1=0.2734
+  per-stock | lstm        | classification | avg f1=0.2615
+  per-stock | gru         | regression     | avg f1=0.2667
+  per-stock | gru         | classification | avg f1=0.2596
+  per-stock | tcn         | regression     | avg f1=0.2088
+  per-stock | tcn         | classification | avg f1=0.2250
+  per-stock | cnn1d       | regression     | avg f1=0.2402
+  per-stock | cnn1d       | classification | avg f1=0.2546
+  per-stock | transformer | regression     | avg f1=0.2372
+  per-stock | transformer | classification | avg f1=0.2625
+
+SEQUENCE MODEL RESULTS:
+architecture           head granularity split  macro_f1
+        lstm     regression      pooled   val  0.405560
+        lstm classification      pooled   val  0.487696
+         gru     regression      pooled   val  0.332019
+         gru classification      pooled   val  0.475797
+         tcn     regression      pooled   val  0.291517
+         tcn classification      pooled   val  0.494571
+       cnn1d     regression      pooled   val  0.375775
+       cnn1d classification      pooled   val  0.495737
+ transformer     regression      pooled   val  0.230300
+ transformer classification      pooled   val  0.481036
+       cnn1d classification      pooled  test  0.461053
+        lstm     regression   per_stock   val  0.273446
+        lstm classification   per_stock   val  0.261523
+         gru     regression   per_stock   val  0.266665
+         gru classification   per_stock   val  0.259612
+         tcn     regression   per_stock   val  0.208850
+         tcn classification   per_stock   val  0.224971
+       cnn1d     regression   per_stock   val  0.240220
+       cnn1d classification   per_stock   val  0.254636
+ transformer     regression   per_stock   val  0.237241
+ transformer classification   per_stock   val  0.262488
+  [plot saved] s4_pooled_sequence_macro_f1.png
+  [plot saved] s4_granularity_comparison.png
+stage 4 complete

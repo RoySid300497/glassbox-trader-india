@@ -87,15 +87,23 @@ def stage_2b_enhanced():
     for c in fund_present:
         master[c] = master[c].fillna(master[c].median())
 
-    # dropping rows only where truly unfixable columns are null
+    # dropping rows only where the FEATURES are null — a row with complete
+    # features is scoreable even if its forward labels are unknown, which is
+    # always true for the most recent dates (the ones we actually predict).
+    # forward-label NaNs are handled per-horizon at training time instead of
+    # deleting the row, so the latest trading days survive for inference
     lag_cols = [f"{c}_lag{l}" for c in LAG_COLS for l in LAG_DAYS]
-    essential = (lag_cols + RETURN_FEATURES
-                 + [f"label_{h}" for h in HORIZONS]
-                 + [f"fwd_return_{h}" for h in HORIZONS])
-    essential = [c for c in essential if c in master.columns]
+    feature_essential = [c for c in (lag_cols + RETURN_FEATURES)
+                         if c in master.columns]
     before = master.shape[0]
-    master = master.dropna(subset=essential).reset_index(drop=True)
-    log(f"dropped {before - master.shape[0]:,} rows with nulls in essentials")
+    master = master.dropna(subset=feature_essential).reset_index(drop=True)
+    log(f"dropped {before - master.shape[0]:,} rows with null features")
+    for h in HORIZONS:
+        lc = f"label_{h}"
+        if lc in master.columns:
+            n_lbl = master[lc].notna().sum()
+            log(f"  rows with {lc}: {n_lbl:,} "
+                f"({master.shape[0] - n_lbl:,} lack it — kept for scoring)")
     log(f"enhanced master shape: {master.shape}")
 
     master.to_csv(os.path.join(DATA_PATH, "master_enhanced.csv"), index=False)

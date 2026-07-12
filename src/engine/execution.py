@@ -1,79 +1,106 @@
-"""executing gated decisions on alpaca paper with code-computed risk levels"""
+"""executing gated decisions in SIMULATION mode for the india/NSE system
+
+indian brokers have no alpaca-style paper sandbox, so this module simulates
+a paper portfolio itself: it sizes and "places" bracket orders exactly like
+the live logic, records them to supabase, and a next-day scoring pass fills
+them against real NSE OHLC (respecting circuit bands). the public interface
+matches the original alpaca module so run_daily needs no changes.
+
+set TRADING_MODE=simulate to enable. a future execution_angel.py can swap in
+real order placement behind a LIVE flag without touching run_daily.
+"""
 
 import os
 import math
-import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from dotenv import load_dotenv
 from engine.memory import get_client, validate_ticker
 
 load_dotenv()
 
-PAPER_URL = "https://paper-api.alpaca.markets/v2"
-LIVE_URL = "https://api.alpaca.markets/v2"
-LIVE_CONFIRM_SENTINEL = "I_UNDERSTAND_REAL_MONEY"
-RISK_PER_TRADE = 0.01        # risking one percent of equity per position
-STOP_ATR_MULT = 1.5          # placing the stop this many ATRs below entry
-REWARD_RISK = 2.0            # placing the runner half's target at two r
-PARTIAL_R = 1.0              # banking the scalp half at one r of profit
-MAX_POSITION_FRACTION = 0.10  # capping any position at ten percent of equity
-MAX_DRAWDOWN_HALT = 0.10     # halting new entries past this peak-to-now drawdown
-MAX_HOLD_DAYS = 10           # closing stale positions unless a thesis backs them
-EARNINGS_BLACKOUT_DAYS = 2   # refusing fresh risk right before earnings
+RISK_PER_TRADE = 0.01
+STOP_ATR_MULT = 1.5
+REWARD_RISK = 2.0
+PARTIAL_R = 1.0
+MAX_POSITION_FRACTION = 0.10
+MAX_DRAWDOWN_HALT = 0.10
+MAX_HOLD_DAYS = 10
+EARNINGS_BLACKOUT_DAYS = 2
+START_EQUITY = 1_000_000.0        # ₹10 lakh notional paper book
+CIRCUIT_BAND = 0.10               # cap simulated fills within a 10% daily band
 
 
 def trading_mode():
-    # resolving paper or live with a double interlock guarding real money
+    # simulate is the india default; live is reserved for the angel client
     mode = os.environ.get("TRADING_MODE", "").lower()
     if not mode:
-        mode = "paper" if os.environ.get(
+        mode = "simulate" if os.environ.get(
             "PAPER_TRADING", "").lower() == "true" else ""
-    if mode == "live" and os.environ.get(
-            "LIVE_TRADING_CONFIRM") != LIVE_CONFIRM_SENTINEL:
-        print("[exec] TRADING_MODE=live set without LIVE_TRADING_CONFIRM "
-              "sentinel — refusing live, staying disabled")
-        return ""
-    return mode if mode in ("paper", "live") else ""
-
-
-def base_url():
-    # selecting the endpoint strictly from the resolved mode
-    return LIVE_URL if trading_mode() == "live" else PAPER_URL
+    return mode if mode in ("simulate", "paper", "live") else ""
 
 
 def enabled():
-    # trading only when a valid mode and both keys are explicitly present
-    return bool(trading_mode()
-                and os.environ.get("ALPACA_API_KEY")
-                and os.environ.get("ALPACA_SECRET_KEY"))
+    # simulation needs no broker keys — only that the mode is set
+    return trading_mode() in ("simulate", "paper")
 
 
-def _headers():
-    return {"APCA-API-KEY-ID": os.environ["ALPACA_API_KEY"],
-            "APCA-API-SECRET-KEY": os.environ["ALPACA_SECRET_KEY"]}
+def base_url():
+    # no live endpoint in simulation; returned for log/interface compatibility
+    return "simulation://nse-paper-book"
 
 
-def _get(path):
-    r = requests.get(f"{base_url()}{path}", headers=_headers(), timeout=20)
-    r.raise_for_status()
-    return r.json()
+# ----- virtual account, backed by supabase -------------------------------
+
+def _sim_state():
+    # loading (or seeding) the virtual cash/equity record
+    client = get_client()
+    rows = client.table("config").select("value").eq(
+        "key", "sim_equity").execute().data
+    if rows:
+        try:
+            return float(rows[0]["value"])
+        except (TypeError, ValueError):
+            pass
+    client.table("config").upsert(
+        {"key": "sim_equity", "value": str(START_EQUITY)}).execute()
+    return START_EQUITY
+
+
+def _set_equity(value):
+    get_client().table("config").upsert(
+        {"key": "sim_equity", "value": str(round(float(value), 2))}).execute()
 
 
 def get_account():
-    # reading paper equity and buying power
-    return _get("/account")
+    # mirroring the alpaca account shape the rest of the code expects
+    eq = _sim_state()
+    rows = get_client().table("config").select("value").eq(
+        "key", "sim_last_equity").execute().data
+    last = float(rows[0]["value"]) if rows else eq
+    return {"equity": eq, "last_equity": last, "cash": eq}
 
 
 def get_positions():
-    # listing open paper positions
-    return _get("/positions")
+    # returning open sim positions in the alpaca-like field shape
+    rows = get_client().table("positions").select("*").eq(
+        "status", "OPEN").execute().data or []
+    out = []
+    for r in rows:
+        entry = float(r.get("entry_price") or 0)
+        out.append({"symbol": r["ticker"].replace(".", "-"),
+                    "qty": float(r.get("qty") or 0),
+                    "avg_entry_price": entry,
+                    "unrealized_pl": 0.0})
+    return out
 
+
+# ----- risk levels (same math as live) -----------------------------------
 
 def compute_levels(ticker):
-    # deriving entry, atr stop, and 2r target from recent daily bars
+    # deriving entry, atr stop, and 2r target from recent NSE daily bars
     import yfinance as yf
-    hist = yf.download(ticker.replace(".", "-"), period="2mo",
-                       auto_adjust=True, progress=False)
+    sym = ticker if ticker.endswith(".NS") else ticker + ".NS"
+    hist = yf.download(sym, period="2mo", auto_adjust=True, progress=False)
     if hist.empty or len(hist) < 15:
         return None
     high = hist["High"].squeeze()
@@ -94,188 +121,174 @@ def compute_levels(ticker):
 
 def in_drawdown_halt():
     # refusing new risk when equity has fallen too far from its peak
-    res = get_client().table("portfolio_history").select("equity") \
-        .order("equity", desc=True).limit(1).execute().data
-    if not res:
-        return False
-    peak = float(res[0]["equity"])
+    peak = _peak_equity()
     current = float(get_account()["equity"])
     return peak > 0 and (current / peak - 1) < -MAX_DRAWDOWN_HALT
 
 
+def _peak_equity():
+    rows = get_client().table("config").select("value").eq(
+        "key", "sim_peak_equity").execute().data
+    seed = float(rows[0]["value"]) if rows else START_EQUITY
+    cur = float(_sim_state())
+    if cur > seed:
+        get_client().table("config").upsert(
+            {"key": "sim_peak_equity", "value": str(cur)}).execute()
+        return cur
+    return seed
+
+
+# ----- entry (simulated bracket) -----------------------------------------
+
 def maybe_enter(ticker):
-    # opening a long bracket position sized to risk one percent of equity
+    # opening a simulated long bracket sized to risk one percent of equity
     if not enabled():
-        return "paper trading disabled"
+        return "simulation disabled"
     ticker = validate_ticker(ticker)
     if in_drawdown_halt():
         return f"{ticker}: drawdown halt active — no new entries"
-
-    # skipping when a position already exists for this symbol
     if any(p["symbol"] == ticker.replace(".", "-") for p in get_positions()):
         return f"{ticker}: position already open"
 
-    # refusing new entries right before a binary earnings event
     try:
         from engine.news_fetcher import fetch_next_earnings
         days = fetch_next_earnings(ticker)
         if days is not None and int(days) <= EARNINGS_BLACKOUT_DAYS:
-            note = (f"{ticker}: earnings in {int(days)}d — "
-                    f"blackout, no new entry")
-            print(f"  [paper] {note}")
+            note = f"{ticker}: earnings in {int(days)}d — blackout"
+            print(f"  [sim] {note}")
             return note
     except Exception:
-        pass  # never letting the guard itself block trading on a data error
+        pass
 
     levels = compute_levels(ticker)
     if levels is None:
         return f"{ticker}: could not compute risk levels"
 
     equity = float(get_account()["equity"])
-    risk_dollars = equity * RISK_PER_TRADE
+    risk = equity * RISK_PER_TRADE
     per_share_risk = levels["entry"] - levels["stop"]
-    qty = math.floor(risk_dollars / per_share_risk)
+    qty = math.floor(risk / per_share_risk)
     max_qty = math.floor(equity * MAX_POSITION_FRACTION / levels["entry"])
     qty = min(qty, max_qty)
     if qty < 1:
         return f"{ticker}: position size below one share"
 
-    scalp_target = round(levels["entry"]
-                         + PARTIAL_R * (levels["entry"] - levels["stop"]), 2)
+    # recording the simulated position; fills are scored next day
+    get_client().table("positions").upsert({
+        "ticker": ticker,
+        "qty": float(qty),
+        "entry_price": float(levels["entry"]),
+        "entry_date": datetime.now(timezone.utc).isoformat(),
+        "status": "OPEN"}).execute()
+    # stashing the bracket levels for the scorer
+    _save_bracket(ticker, levels, qty)
 
-    # splitting into a one-r scalp half and a two-r runner half when possible
-    if qty >= 2:
-        runner = qty // 2
-        scalp = qty - runner
-        _place_bracket(ticker, scalp, scalp_target, levels["stop"])
-        _place_bracket(ticker, runner, levels["target"], levels["stop"])
-        note = (f"{ticker}: bought {qty} @ ~{levels['entry']} "
-                f"stop {levels['stop']} — scalp {scalp} tp {scalp_target}, "
-                f"runner {runner} tp {levels['target']} "
-                f"(atr {levels['atr']})")
-    else:
-        _place_bracket(ticker, qty, levels["target"], levels["stop"])
-        note = (f"{ticker}: bought {qty} @ ~{levels['entry']} "
-                f"stop {levels['stop']} target {levels['target']} "
-                f"(atr {levels['atr']})")
-    print(f"  [paper] {note}")
+    note = (f"{ticker}: SIM bought {qty} @ ~{levels['entry']} "
+            f"stop {levels['stop']} target {levels['target']} "
+            f"(atr {levels['atr']})")
+    print(f"  [sim] {note}")
     return note
 
 
-def _place_bracket(ticker, qty, target, stop):
-    # submitting one bracket order for a slice of the position
-    order = {"symbol": ticker.replace(".", "-"), "qty": str(int(qty)),
-             "side": "buy", "type": "market", "time_in_force": "day",
-             "order_class": "bracket",
-             "take_profit": {"limit_price": str(target)},
-             "stop_loss": {"stop_price": str(stop)}}
-    r = requests.post(f"{base_url()}/orders", headers=_headers(), json=order,
-                      timeout=20)
-    r.raise_for_status()
-    return r.json()
+def _save_bracket(ticker, levels, qty):
+    import json
+    get_client().table("config").upsert({
+        "key": f"sim_bracket:{ticker}",
+        "value": json.dumps({"stop": levels["stop"],
+                             "target": levels["target"],
+                             "entry": levels["entry"], "qty": qty})}).execute()
 
 
-def _cancel_open_orders(symbol):
-    # cancelling every open order on one symbol so the position can close
-    orders = _get(f"/orders?status=open&symbols={symbol}&limit=100")
-    for o in orders:
-        try:
-            requests.delete(f"{base_url()}/orders/{o['id']}",
-                            headers=_headers(), timeout=20).raise_for_status()
-        except Exception as e:
-            print(f"  [paper] {symbol}: cancel {o['id'][:8]} failed: {e}")
-    return len(orders)
-
+# ----- exit + next-day fill scoring --------------------------------------
 
 def maybe_exit(ticker):
-    # closing any open position when the panels vote sell
+    # closing a simulated position at the latest close
     if not enabled():
-        return "paper trading disabled"
+        return "simulation disabled"
     ticker = validate_ticker(ticker)
-    sym = ticker.replace(".", "-")
-    if not any(p["symbol"] == sym for p in get_positions()):
-        return f"{ticker}: no open position to exit"
-    # clearing bracket legs first so alpaca allows the liquidation
-    _cancel_open_orders(sym)
-    r = requests.delete(f"{base_url()}/positions/{sym}", headers=_headers(),
-                        timeout=20)
-    r.raise_for_status()
-    print(f"  [paper] {ticker}: position closed on SELL vote")
-    return f"{ticker}: closed"
+    px = _latest_close(ticker)
+    _close_position(ticker, px, reason="manual")
+    return f"{ticker}: SIM closed @ ~{px}"
 
 
-def _open_stop_orders(symbol):
-    # listing open protective stop legs, including ones nested under parents
-    orders = _get(f"/orders?status=open&symbols={symbol}"
-                  f"&limit=100&nested=true")
-    flat = []
-    for o in orders:
-        flat.append(o)
-        flat.extend(o.get("legs") or [])
-    live = ("new", "accepted", "held", "partially_filled")
-    return [{"id": o["id"], "stop_price": o["stop_price"]}
-            for o in flat
-            if o.get("type") in ("stop", "stop_limit")
-            and o.get("side") == "sell" and o.get("stop_price")
-            and o.get("status") in live]
-
-
-def _replace_stop(order_id, stop_price):
-    # replacing one stop order at the new trailing level
-    r = requests.patch(f"{base_url()}/orders/{order_id}", headers=_headers(),
-                       json={"stop_price": str(stop_price)}, timeout=20)
-    r.raise_for_status()
-    return r.json()
-
-
-def _daily_bars(symbol):
-    # fetching a lowercase ohlc frame for trailing stop computation
-    import pandas as pd
-    import yfinance as yf
-    hist = yf.download(symbol, period="6mo", auto_adjust=True, progress=False)
-    if hist is None or hist.empty or len(hist) < 30:
-        return None
-    if isinstance(hist.columns, pd.MultiIndex):
-        hist.columns = hist.columns.get_level_values(0)
-    return hist.rename(columns=str.lower)[["open", "high", "low", "close"]]
-
-
-def ratchet_stops():
-    # tightening bracket stops toward the chandelier level, never loosening
-    if not enabled():
-        return []
-    from engine.stop_ratchet import ratchet_open_stops
-    return ratchet_open_stops(
-        list_positions=lambda: [
-            {"symbol": p["symbol"],
-             "side": "long" if float(p["qty"]) > 0 else "short",
-             "qty": p["qty"]} for p in get_positions()],
-        list_stop_orders=_open_stop_orders,
-        replace_stop=_replace_stop,
-        fetch_bars=_daily_bars)
-
-
-def sync_positions_table():
-    # mirroring live alpaca positions while preserving first-seen entry dates
+def score_open_positions():
+    # the daily fill simulator: for each open position, pull the latest bar
+    # and decide if stop/target hit, capping fills within the circuit band
+    import json
     if not enabled():
         return
-    live = get_positions()
     client = get_client()
-    existing = {r["ticker"]: r for r in
-                (client.table("positions").select("ticker,entry_date")
-                 .eq("status", "OPEN").execute().data or [])}
-    client.table("positions").update({"status": "CLOSED"}) \
-        .eq("status", "OPEN").execute()
-    for p in live:
-        ticker = p["symbol"].replace("-", ".")
-        first_seen = (existing.get(ticker) or {}).get("entry_date") \
-            or datetime.now(timezone.utc).isoformat()
-        client.table("positions").upsert({
-            "ticker": ticker,
-            "qty": float(p["qty"]),
-            "entry_price": float(p["avg_entry_price"]),
-            "entry_date": first_seen,
-            "status": "OPEN"}).execute()
+    rows = client.table("positions").select("*").eq(
+        "status", "OPEN").execute().data or []
+    for r in rows:
+        ticker = r["ticker"]
+        bar = _latest_bar(ticker)
+        if bar is None:
+            continue
+        bk_rows = client.table("config").select("value").eq(
+            "key", f"sim_bracket:{ticker}").execute().data
+        if not bk_rows:
+            continue
+        bk = json.loads(bk_rows[0]["value"])
+        entry, qty = bk["entry"], bk["qty"]
+        lo = max(bar["low"], entry * (1 - CIRCUIT_BAND))
+        hi = min(bar["high"], entry * (1 + CIRCUIT_BAND))
+        if lo <= bk["stop"]:
+            _close_position(ticker, bk["stop"], "stop", qty, entry)
+        elif hi >= bk["target"]:
+            _close_position(ticker, bk["target"], "target", qty, entry)
+        # else: still open, carry to next day
+
+
+def _close_position(ticker, exit_px, reason, qty=None, entry=None):
+    client = get_client()
+    if qty is None or entry is None:
+        pos = client.table("positions").select("*").eq(
+            "ticker", ticker).eq("status", "OPEN").execute().data
+        if not pos:
+            return
+        qty = float(pos[0]["qty"])
+        entry = float(pos[0]["entry_price"])
+    pnl = (float(exit_px) - float(entry)) * float(qty)
+    # updating virtual equity
+    eq = float(_sim_state())
+    client.table("config").upsert(
+        {"key": "sim_last_equity", "value": str(eq)}).execute()
+    _set_equity(eq + pnl)
+    client.table("positions").update(
+        {"status": "CLOSED"}).eq("ticker", ticker).eq(
+        "status", "OPEN").execute()
+    client.table("config").delete().eq(
+        "key", f"sim_bracket:{ticker}").execute()
+    print(f"  [sim] {ticker} closed ({reason}) @ {exit_px} "
+          f"pnl {pnl:+,.2f}")
+
+
+# ----- market data helpers -----------------------------------------------
+
+def _latest_bar(ticker):
+    import yfinance as yf
+    sym = ticker if ticker.endswith(".NS") else ticker + ".NS"
+    h = yf.download(sym, period="5d", auto_adjust=True, progress=False)
+    if h.empty:
+        return None
+    last = h.iloc[-1]
+    return {"high": float(last["High"].squeeze()),
+            "low": float(last["Low"].squeeze()),
+            "close": float(last["Close"].squeeze())}
+
+
+def _latest_close(ticker):
+    bar = _latest_bar(ticker)
+    return bar["close"] if bar else None
+
+
+# ----- position lifecycle (same interface as live) -----------------------
+
+def sync_positions_table():
+    # in simulation the positions table IS the source of truth, so this is
+    # a no-op kept for interface compatibility
+    return
 
 
 def manage_positions():
@@ -283,8 +296,8 @@ def manage_positions():
     if not enabled():
         return
     from engine.memory import get_active_thesis
-    rows = get_client().table("positions").select("ticker,entry_date") \
-        .eq("status", "OPEN").execute().data or []
+    rows = get_client().table("positions").select(
+        "ticker,entry_date").eq("status", "OPEN").execute().data or []
     now = datetime.now(timezone.utc)
     for r in rows:
         try:
@@ -296,40 +309,68 @@ def manage_positions():
             continue
         thesis = get_active_thesis(r["ticker"])
         if thesis and thesis["direction"] == "LONG":
-            print(f"  [paper] {r['ticker']}: {age}d old, "
-                  f"held on active thesis")
             continue
-        print(f"  [paper] {r['ticker']}: {age}d exceeds "
-              f"{MAX_HOLD_DAYS}d limit — closing")
+        print(f"  [sim] {r['ticker']}: {age}d exceeds "
+              f"{MAX_HOLD_DAYS}d — closing")
         maybe_exit(r["ticker"])
 
 
-def paper_report():
-    # summarising paper account performance for the weekly log
+def ratchet_stops():
+    # trailing the stop up as price advances, on the stored bracket levels
+    import json
     if not enabled():
-        print("paper trading: disabled")
+        return
+    client = get_client()
+    rows = client.table("positions").select("*").eq(
+        "status", "OPEN").execute().data or []
+    for r in rows:
+        ticker = r["ticker"]
+        bar = _latest_bar(ticker)
+        bk_rows = client.table("config").select("value").eq(
+            "key", f"sim_bracket:{ticker}").execute().data
+        if bar is None or not bk_rows:
+            continue
+        bk = json.loads(bk_rows[0]["value"])
+        entry = bk["entry"]
+        # once price is up one r, lift the stop to breakeven
+        r_dist = entry - bk["stop"]
+        if r_dist > 0 and bar["close"] >= entry + r_dist and bk["stop"] < entry:
+            bk["stop"] = round(entry, 2)
+            client.table("config").upsert(
+                {"key": f"sim_bracket:{ticker}",
+                 "value": json.dumps(bk)}).execute()
+            print(f"  [sim] {ticker}: stop ratcheted to breakeven")
+
+
+def paper_report():
+    # summarising the simulated book for the weekly log
+    if not enabled():
+        print("simulation: disabled")
         return
     acct = get_account()
     positions = get_positions()
-    print(f"paper account: equity ${float(acct['equity']):,.2f} "
-          f"(last ${float(acct['last_equity']):,.2f})")
+    print(f"sim account: equity ₹{acct['equity']:,.2f} "
+          f"(last ₹{acct['last_equity']:,.2f})")
     for p in positions:
         print(f"  open: {p['symbol']} x{p['qty']} "
-              f"entry {p['avg_entry_price']} "
-              f"unrealized {float(p['unrealized_pl']):+,.2f}")
+              f"entry {p['avg_entry_price']}")
     if not positions:
         print("  no open positions")
 
 
 def is_trading_day():
-    # asking alpaca whether the market opens at all today
-    if not (os.environ.get("ALPACA_API_KEY")
-            and os.environ.get("ALPACA_SECRET_KEY")):
-        return True
-    try:
-        from datetime import date
-        today = str(date.today())
-        cal = _get(f"/calendar?start={today}&end={today}")
-        return bool(cal)
-    except Exception:
-        return True
+    # skipping weekends and NSE holidays
+    today = date.today()
+    if today.weekday() >= 5:
+        return False
+    return today.isoformat() not in _nse_holidays()
+
+
+def _nse_holidays():
+    # a static NSE holiday set; refresh yearly. absent dates default to open
+    return {
+        # 2026 NSE trading holidays (partial — extend as published)
+        "2026-01-26", "2026-03-06", "2026-03-25", "2026-04-01",
+        "2026-04-03", "2026-04-14", "2026-05-01", "2026-08-15",
+        "2026-10-02", "2026-11-04", "2026-12-25",
+    }

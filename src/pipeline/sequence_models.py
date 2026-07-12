@@ -13,6 +13,15 @@ from core.helpers import log, save_plot, section
 from pipeline.experiments import enhanced_feature_cols
 
 
+
+def _drop_dead_cols(df, feature_cols):
+    # removing feature columns that are entirely empty (e.g. absent NSE
+    # fundamentals) so the scaler cannot produce NaN statistics that would
+    # collapse every sequence model to a constant prediction
+    live = [c for c in feature_cols
+            if c in df.columns and not df[c].isna().all()]
+    return live
+
 def build_sequences(frame, feature_cols, window=SEQ_WINDOW):
     # building sliding windows of shape (samples, window, features) per ticker
     X, y_reg, y_cls = [], [], []
@@ -171,6 +180,10 @@ def stage_4_sequence():
                      parse_dates=["date"])
     df = df.sort_values(["symbol", "date"]).reset_index(drop=True)
     feature_cols = enhanced_feature_cols(df)
+    feature_cols = _drop_dead_cols(df, feature_cols)
+    # filling any remaining sparse NaNs so no window carries a NaN into the net
+    for _c in feature_cols:
+        df[_c] = df[_c].fillna(0.0)
     architectures = ["lstm", "gru", "tcn", "cnn1d", "transformer"]
     heads = ["regression", "classification"]
     results = []
@@ -219,8 +232,8 @@ def stage_4_sequence():
 
     # refitting the winner on train+val and saving it for the chatbot
     log("refitting winner on train+val for deployment...")
-    deploy_scaler = StandardScaler().fit(
-        df[df["date"] < VAL_END][feature_cols])
+    _dep = df[df["date"] < VAL_END][feature_cols].fillna(0.0)
+    deploy_scaler = StandardScaler().fit(_dep)
     tv = df[df["date"] < VAL_END].copy()
     tv[feature_cols] = deploy_scaler.transform(tv[feature_cols])
     aX, ar, ac = build_sequences(tv, feature_cols)
@@ -250,7 +263,7 @@ def stage_4_sequence():
                            (sub["date"] < VAL_END)]
                 if len(s_tr) < SEQ_WINDOW + 60 or len(s_va) < SEQ_WINDOW + 10:
                     continue
-                sc = StandardScaler().fit(s_tr[feature_cols])
+                sc = StandardScaler().fit(s_tr[feature_cols].fillna(0.0))
                 s_tr = s_tr.copy(); s_va = s_va.copy()
                 s_tr[feature_cols] = sc.transform(s_tr[feature_cols])
                 s_va[feature_cols] = sc.transform(s_va[feature_cols])

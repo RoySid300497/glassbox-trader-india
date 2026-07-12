@@ -11,10 +11,28 @@ def prep_xy(train, val, test, feature_cols, label_col):
     # imputing, scaling, and encoding using training statistics only
     from sklearn.impute import SimpleImputer
     from sklearn.preprocessing import StandardScaler, LabelEncoder
+    # dropping rows with no label for THIS horizon — recent rows legitimately
+    # lack forward labels and must not become a phantom class
+    train = train[train[label_col].notna()]
+    val = val[val[label_col].notna()]
+    test = test[test[label_col].notna()]
+    # some feature columns can be entirely empty (e.g. fundamentals absent
+    # for NSE names); a median imputer would silently DROP those columns and
+    # change the feature count, breaking importances and inference alignment.
+    # filling fully-empty columns with 0 keeps every column present and the
+    # dimensionality stable across train/val/test and at serving time.
+    tr = train[feature_cols].copy()
+    va = val[feature_cols].copy()
+    te = test[feature_cols].copy()
+    all_nan = [c for c in feature_cols if tr[c].isna().all()]
+    for c in all_nan:
+        tr[c] = 0.0
+        va[c] = 0.0
+        te[c] = 0.0
     imp = SimpleImputer(strategy="median")
-    Xtr = imp.fit_transform(train[feature_cols])
-    Xva = imp.transform(val[feature_cols])
-    Xte = imp.transform(test[feature_cols])
+    Xtr = imp.fit_transform(tr)
+    Xva = imp.transform(va)
+    Xte = imp.transform(te)
     sc = StandardScaler()
     Xtr = sc.fit_transform(Xtr)
     Xva = sc.transform(Xva)
@@ -38,6 +56,11 @@ def final_test_eval(df, feature_cols, label_col, build_model, use_weight, tag):
     test = df[df["date"] >= VAL_END]
 
     # fitting preprocessing on train+val only to prevent leakage
+    # dropping rows with no label for THIS horizon — recent rows legitimately
+    # lack forward labels and must not become a phantom class
+    train = train[train[label_col].notna()]
+    val = val[val[label_col].notna()]
+    test = test[test[label_col].notna()]
     imp = SimpleImputer(strategy="median")
     Xtv = imp.fit_transform(trainval[feature_cols])
     Xte = imp.transform(test[feature_cols])
