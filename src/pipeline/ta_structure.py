@@ -25,7 +25,7 @@ ATR_SPAN = 22
 SWING_WINDOW = 5
 CHANDELIER_MULT = 3.0
 
-STRUCTURE_FEATURE_VERSION = "ta_structure_v3.3"
+STRUCTURE_FEATURE_VERSION = "ta_structure_v3.4"
 
 
 def _atr(df: pd.DataFrame, span: int = ATR_SPAN) -> pd.Series:
@@ -452,6 +452,30 @@ def inside_bars(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def prior_day_levels(df: pd.DataFrame) -> pd.DataFrame:
+    # positioning today's open and close against the prior day's range, and
+    # flagging overnight gaps that break or reclaim the prior day's extremes
+    # — a pre-open structure read the daily cadence can act on
+    out = pd.DataFrame(index=df.index)
+    pdh = df["high"].shift(1)
+    pdl = df["low"].shift(1)
+    pdc = df["close"].shift(1)
+    rng = (pdh - pdl).replace(0, pd.NA)
+    gap = (df["open"] - pdc) / rng
+    out["gap_vs_prior_range"] = gap.astype(float).fillna(0.0)
+    out["gap_above_prior_high"] = (df["open"] > pdh).astype(int)
+    out["gap_below_prior_low"] = (df["open"] < pdl).astype(int)
+    out["close_above_prior_high"] = (df["close"] > pdh).astype(int)
+    out["close_below_prior_low"] = (df["close"] < pdl).astype(int)
+    out["failed_gap_up"] = ((df["open"] > pdh) &
+                            (df["close"] < pdh)).astype(int)
+    out["failed_gap_down"] = ((df["open"] < pdl) &
+                              (df["close"] > pdl)).astype(int)
+    pos = (df["close"] - pdl) / rng
+    out["close_in_prior_range"] = pos.astype(float).clip(-1, 2).fillna(0.5)
+    return out
+
+
 def turn_days(df: pd.DataFrame) -> pd.DataFrame:
     # flagging the first opposite-color close after a strong directional
     # run — the classic short entry on parabolic names, and its mirror
@@ -506,6 +530,7 @@ def build_structure_features(df: pd.DataFrame) -> pd.DataFrame:
         range_regime(df),
         inside_bars(df),
         turn_days(df),
+        prior_day_levels(df),
         trend_volume_extras(df),
     ]
     return pd.concat(parts, axis=1)
@@ -576,6 +601,14 @@ def technical_structure_block(df: pd.DataFrame) -> dict:
         "bb_squeeze_active": bool(last["bb_squeeze"]),
         "inside_bar_streak": int(last["inside_bar_streak"] or 0),
         "first_red_after_run": bool(last["first_red_after_run"]),
+        "gap_vs_prior_range": round(float(last["gap_vs_prior_range"]), 3),
+        "gap_above_prior_high": bool(last["gap_above_prior_high"]),
+        "gap_below_prior_low": bool(last["gap_below_prior_low"]),
+        "close_above_prior_high": bool(last["close_above_prior_high"]),
+        "close_below_prior_low": bool(last["close_below_prior_low"]),
+        "failed_gap_up": bool(last["failed_gap_up"]),
+        "failed_gap_down": bool(last["failed_gap_down"]),
+        "close_in_prior_range": round(float(last["close_in_prior_range"]), 3),
         "first_green_after_run": bool(last["first_green_after_run"]),
         "above_200ema": bool(last["above_ema200"]),
         "market_stage": _market_stage(last),
