@@ -12,7 +12,7 @@ const key =
 export const supabase = createClient(url, key);
 
 export const SITE_MODE =
-  process.env.NEXT_PUBLIC_SITE_MODE || "RESEARCH"; // PAPER via vercel env
+  process.env.NEXT_PUBLIC_SITE_MODE || "SIMULATE"; // set NEXT_PUBLIC_SITE_MODE in vercel
 
 export interface KeyPoint { claim: string; evidence_field: string; }
 
