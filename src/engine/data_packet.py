@@ -206,6 +206,27 @@ def _insider_block(ticker):
         return None
 
 
+def _india_context_block():
+    # nifty regime + india VIX + FII/DII flows, all defensive
+    try:
+        from engine.india_data import india_market_context
+        return india_market_context()
+    except Exception as e:
+        print(f"  [packet] india context failed: {e}")
+        return None
+
+
+def _delivery_block(ticker):
+    # NSE delivery percentage — a conviction signal unique to indian data
+    try:
+        from engine.india_data import delivery_pct
+        d = delivery_pct(ticker)
+        return {"delivery_pct": round(d, 1)} if d is not None else None
+    except Exception as e:
+        print(f"  [packet] delivery block failed: {e}")
+        return None
+
+
 def build_packet(ticker, news_items):
     # combining signal, structure, news, history, lessons, thesis, and context
     from engine.news_fetcher import fetch_next_earnings
@@ -224,8 +245,8 @@ def build_packet(ticker, news_items):
         "overnight_gap_pct": _gap,
         "overnight_gap_no_catalyst": bool(
             _gap is not None and abs(_gap) >= 1.5 and not _has_catalyst),
-        "insider_activity": _insider_block(ticker),
-        "congress_trading": _congress_block_safe(ticker),
+        "delivery_pct": _delivery_block(ticker),
+        "india_market_context": _india_context_block(),
         "evidence_reliability": _reliability_block(),
         "macro_news": _macro_block(),
         "days_to_earnings": fetch_next_earnings(ticker),

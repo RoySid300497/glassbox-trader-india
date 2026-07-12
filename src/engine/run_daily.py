@@ -419,6 +419,11 @@ def main():
         score_model_predictions()
     else:
         weekly_review()
+        try:
+            from engine.sim_report import simulation_report
+            simulation_report()
+        except Exception as e:
+            print(f"[sim] report failed: {e}")
 
 
 if __name__ == "__main__":

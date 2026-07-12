@@ -31,6 +31,14 @@ PRIOR_GRADES = {
     "prior_day_break": ("C", "gaps and closes beyond the prior day's range "
                             "signal breakout or failed-breakout structure; "
                             "unproven on daily S&P names until measured"),
+    "india_market_context": ("B", "nifty regime, india VIX, and FII/DII "
+                                "flows — institutional flow is the most "
+                                "watched india signal; measured grade will "
+                                "confirm predictive value"),
+    "fii_dii_flow": ("B", "foreign/domestic institutional net flows, an "
+                         "order-flow signal with no US analog"),
+    "delivery_pct": ("C", "share of volume taken to delivery signals "
+                        "conviction; unproven on daily horizon until measured"),
     "market_context": ("B", "index trend and volatility regime condition "
                             "every single-name bet"),
     "overnight_gap": ("B", "gaps carry information about overnight flows"),
