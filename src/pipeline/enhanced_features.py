@@ -64,6 +64,35 @@ def stage_2b_enhanced():
         .transform("mean")
     master["rel_to_sector"] = master["return_1d"] - master["sector_return"]
 
+    # merging FII/DII institutional flows as point-in-time training features.
+    # this activates ONLY when a real accumulated history exists; until then
+    # the columns are simply absent and training proceeds on price alone.
+    # anti-leakage: backward merge_asof with allow_exact_matches=False means a
+    # flow recorded on date T attaches only to rows STRICTLY AFTER T, so no
+    # same-day or future flow can ever inform a label for that day.
+    try:
+        from engine.india_data import load_fii_dii_history
+        _flows = load_fii_dii_history()
+        if _flows is not None and len(_flows) >= 60:
+            _flows = _flows.sort_values("date")
+            _flows["date"] = pd.to_datetime(_flows["date"])
+            master = master.sort_values("date")
+            master = pd.merge_asof(
+                master, _flows[["date", "fii_net", "dii_net"]],
+                on="date", direction="backward", allow_exact_matches=False)
+            # normalising to rolling z-scores so scale is stable across regimes
+            for _c in ("fii_net", "dii_net"):
+                _m = master[_c].rolling(60, min_periods=20).mean()
+                _s = master[_c].rolling(60, min_periods=20).std()
+                master[f"{_c}_z"] = ((master[_c] - _m) / _s).fillna(0.0)
+            master = master.drop(columns=["fii_net", "dii_net"])
+            log(f"merged FII/DII flows: {len(_flows)} history rows "
+                f"(point-in-time, no lookahead)")
+        else:
+            log("FII/DII history too short — training on price features only")
+    except Exception as _e:
+        log(f"FII/DII merge skipped ({_e}) — price features only")
+
     log("adding multi-horizon labels...")
     master = pd.concat([add_horizon_labels(g) for _, g in
                         master.groupby("symbol", sort=False)],

@@ -187,7 +187,7 @@ def india_market_context():
     # assembling one block: nifty regime + VIX + FII/DII, all defensive
     regime = nifty_regime()
     vix = latest_vix()
-    flows = fii_dii_flows()
+    flows = fii_dii_resilient()
     return {
         "nifty_trend": regime["trend"],
         "nifty_above_ma50": regime["above_ma50"],
@@ -199,3 +199,147 @@ def india_market_context():
         "dii_net_cr": (round(flows["dii_net"], 1)
                        if flows.get("dii_net") is not None else None),
     }
+
+
+# ============ endpoint resilience: multi-source with auto-detection ========
+
+# ordered candidate endpoints for FII/DII; the resolver tries each, remembers
+# which last worked, and re-probes when the cached one fails. add new mirrors
+# here and they are picked up automatically
+FII_DII_ENDPOINTS = [
+    {"name": "nse_api",
+     "url": "https://www.nseindia.com/api/fiidiiTradeReact",
+     "kind": "nse_json"},
+    {"name": "nse_reports",
+     "url": "https://www.nseindia.com/api/reports?archives="
+            "%5B%7B%22name%22%3A%22FII%2FFPI%20%26%20DII%20trading%20"
+            "activity%22%7D%5D",
+     "kind": "nse_json"},
+]
+
+_ENDPOINT_STATE_KEY = "india_fii_endpoint"
+
+
+def _probe_endpoint(ep):
+    # returning parsed flows if this endpoint responds sanely, else None
+    import requests
+    headers = {"User-Agent": "Mozilla/5.0 (glassbox-india)",
+               "Accept": "application/json",
+               "Referer": "https://www.nseindia.com/"}
+    try:
+        sess = requests.Session()
+        sess.get("https://www.nseindia.com", headers=headers, timeout=10)
+        r = sess.get(ep["url"], headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        out = {}
+        rows = data if isinstance(data, list) else data.get("data", [])
+        for row in rows:
+            cat = (row.get("category") or "").upper()
+            net = row.get("netValue")
+            if net is None:
+                continue
+            net = float(net)
+            if "FII" in cat or "FPI" in cat:
+                out["fii_net"] = net
+            elif "DII" in cat:
+                out["dii_net"] = net
+        return out or None
+    except Exception:
+        return None
+
+
+def _remember_endpoint(name):
+    try:
+        from engine.memory import get_client
+        get_client().table("config").upsert(
+            {"key": _ENDPOINT_STATE_KEY, "value": name}).execute()
+    except Exception:
+        pass
+
+
+def _preferred_endpoint_first():
+    # ordering candidates so the last-known-good one is tried first
+    try:
+        from engine.memory import get_client
+        rows = get_client().table("config").select("value").eq(
+            "key", _ENDPOINT_STATE_KEY).execute().data
+        pref = rows[0]["value"] if rows else None
+    except Exception:
+        pref = None
+    if not pref:
+        return FII_DII_ENDPOINTS
+    ordered = [e for e in FII_DII_ENDPOINTS if e["name"] == pref]
+    ordered += [e for e in FII_DII_ENDPOINTS if e["name"] != pref]
+    return ordered
+
+
+def fii_dii_resilient():
+    # trying endpoints in preference order, auto-detecting which works today,
+    # remembering the winner, and falling back to the supabase cache. this is
+    # what makes a changed/blocked NSE endpoint self-heal without code edits
+    for ep in _preferred_endpoint_first():
+        flows = _probe_endpoint(ep)
+        if flows:
+            _remember_endpoint(ep["name"])
+            _persist_flows(flows)
+            _append_history(flows)
+            return flows
+    print("  [india] all FII/DII endpoints failed; using cached history")
+    return _load_cached_flows()
+
+
+# ============ historical FII/DII series for TRAINING (no lookahead) =========
+
+# we cannot get a clean free 12-year bulk history, so we GROW one: every run
+# appends today's flows to a persisted daily CSV. over time this becomes the
+# training series. training reads ONLY dates strictly before each label date,
+# so a value recorded on day T can never inform a prediction for day T.
+
+def _history_csv():
+    return os.path.join(_data_dir(), "fii_dii_history.csv")
+
+
+def _data_dir():
+    try:
+        from core.config import DATA_PATH
+        return DATA_PATH
+    except Exception:
+        return "."
+
+
+def _append_history(flows):
+    # appending today's flows to the growing daily history, de-duped by date
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        path = _history_csv()
+        row = {"date": today,
+               "fii_net": flows.get("fii_net"),
+               "dii_net": flows.get("dii_net")}
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            df = df[df["date"] != today]
+            df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+        else:
+            df = pd.DataFrame([row])
+        df.sort_values("date").to_csv(path, index=False)
+    except Exception as e:
+        print(f"  [india] history append failed: {e}")
+
+
+def load_fii_dii_history():
+    # returning the full persisted daily FII/DII history as a dataframe,
+    # or empty if none has accumulated yet
+    path = _history_csv()
+    if os.path.exists(path):
+        df = pd.read_csv(path, parse_dates=["date"])
+        return df.sort_values("date").reset_index(drop=True)
+    return pd.DataFrame(columns=["date", "fii_net", "dii_net"])
+
+
+def seed_history_from_yfinance_proxy():
+    # OPTIONAL bootstrap: until real FII/DII history accumulates, we can leave
+    # the training columns absent (they simply won't be used). this stub marks
+    # where a one-time historical backfill (from a downloaded CSV) would load.
+    # intentionally a no-op so nothing fake enters training.
+    return load_fii_dii_history()
