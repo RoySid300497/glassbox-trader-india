@@ -16,6 +16,7 @@ from engine.shadow import (record_predictions,
 from engine.execution import (maybe_enter, maybe_exit,
                               sync_positions_table, paper_report, enabled,
                               is_trading_day, manage_positions,
+                              score_open_positions,
                               ratchet_stops)
 from engine.memory import (insert_decision, get_unscored_decisions,
                            score_decision, upsert_market_context,
@@ -413,6 +414,7 @@ def main():
     elif args.mode == "manage":
         run_manage()
     elif args.mode == "score":
+        score_open_positions()   # simulate stop/target fills on today's bars
         score_outcomes()
         score_model_predictions()
     else:

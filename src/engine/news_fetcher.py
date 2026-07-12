@@ -9,6 +9,20 @@ from engine.memory import insert_news, validate_ticker
 load_dotenv()
 
 YAHOO_RSS = "https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}"
+
+# india-focused RSS feeds — free, no key, better NSE coverage than finnhub.
+# these are broad market feeds; we filter headlines by the company name so a
+# per-ticker query still returns relevant items
+ET_MARKETS_RSS = ("https://economictimes.indiatimes.com/markets/"
+                  "rssfeeds/1977021501.cms")
+MC_MARKETS_RSS = ("https://www.moneycontrol.com/rss/marketreports.xml")
+MC_BUSINESS_RSS = ("https://www.moneycontrol.com/rss/business.xml")
+LIVEMINT_RSS = "https://www.livemint.com/rss/markets"
+BS_MARKETS_RSS = ("https://www.business-standard.com/rss/"
+                  "markets-106.rss")
+
+INDIA_RSS_FEEDS = [ET_MARKETS_RSS, MC_MARKETS_RSS, MC_BUSINESS_RSS,
+                   LIVEMINT_RSS, BS_MARKETS_RSS]
 FINNHUB_NEWS = "https://finnhub.io/api/v1/company-news"
 FINNHUB_MACRO = "https://finnhub.io/api/v1/news"
 
@@ -30,6 +44,57 @@ def fetch_yahoo_rss(ticker):
 
 
 _macro_cache = None
+
+
+def _company_name(ticker):
+    # mapping an NSE symbol to a searchable company name for headline filtering
+    try:
+        from pipeline.universe import NIFTY50_SECTORS  # noqa
+    except Exception:
+        pass
+    # a light map for the common large-caps; falls back to the raw symbol
+    names = {
+        "RELIANCE": "Reliance", "TCS": "TCS", "HDFCBANK": "HDFC Bank",
+        "ICICIBANK": "ICICI", "INFY": "Infosys", "HINDUNILVR": "Hindustan Unilever",
+        "ITC": "ITC", "SBIN": "SBI", "BHARTIARTL": "Bharti Airtel",
+        "KOTAKBANK": "Kotak", "LT": "Larsen", "AXISBANK": "Axis Bank",
+        "BAJFINANCE": "Bajaj Finance", "ASIANPAINT": "Asian Paints",
+        "MARUTI": "Maruti", "SUNPHARMA": "Sun Pharma", "TITAN": "Titan",
+        "WIPRO": "Wipro", "NESTLEIND": "Nestle", "ONGC": "ONGC",
+        "NTPC": "NTPC", "TATAMOTORS": "Tata Motors", "TATASTEEL": "Tata Steel",
+        "ADANIENT": "Adani", "COALINDIA": "Coal India", "HCLTECH": "HCL",
+    }
+    base = ticker.replace(".NS", "").replace(".BO", "").upper()
+    return names.get(base, base)
+
+
+def fetch_india_rss(ticker, per_feed=8):
+    # pulling india market RSS feeds and keeping headlines that mention the
+    # company; broad feeds mean we filter rather than query per-ticker
+    import feedparser
+    name = _company_name(ticker).lower()
+    out = []
+    for url in INDIA_RSS_FEEDS:
+        try:
+            feed = feedparser.parse(url)
+            for e in feed.entries[:per_feed * 3]:
+                title = getattr(e, "title", "") or ""
+                summary = getattr(e, "summary", "") or ""
+                blob = f"{title} {summary}".lower()
+                if name and name in blob:
+                    out.append({
+                        "ticker": ticker.replace(".NS", ""),
+                        "headline": title[:300],
+                        "summary": summary[:500],
+                        "url": getattr(e, "link", "") or "",
+                        "source": feed.feed.get("title", "india_rss")[:100],
+                        "published_at": None})
+                if len(out) >= per_feed:
+                    break
+        except Exception as e:
+            print(f"  [news] india rss {url[:40]} failed: {e}")
+            continue
+    return out
 
 
 def fetch_macro_news(limit=5):
@@ -248,12 +313,13 @@ def fetch_alpaca_news(ticker, limit=8):
 
 
 def fetch_and_archive(ticker, top_n=5):
-    # combining sources with a fallback ladder so one provider outage or a
-    # retired endpoint can never blind the packet: yahoo rss + finnhub
-    # first, alpaca news when both come back empty
-    items = dedupe(fetch_yahoo_rss(ticker) + fetch_finnhub(ticker))
+    # india fallback ladder so one feed dying never blinds the packet:
+    # indian market RSS first (best NSE coverage), then yahoo .NS RSS and
+    # finnhub as backups. alpaca is US-only and intentionally not used here.
+    items = dedupe(fetch_india_rss(ticker))
     if not items:
-        items = dedupe(fetch_alpaca_news(ticker))
+        yf_ticker = ticker if ticker.endswith(".NS") else ticker + ".NS"
+        items = dedupe(fetch_yahoo_rss(yf_ticker) + fetch_finnhub(ticker))
     for it in items:
         it["sentiment"] = score_sentiment(
             f"{it['headline']} {it.get('summary') or ''}")
