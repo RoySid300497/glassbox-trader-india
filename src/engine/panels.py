@@ -17,13 +17,31 @@ import os
 def _panel(env, default):
     # reading panel membership from env so providers swap without code edits
     names = os.environ.get(env, default).split(",")
-    return [n.strip() for n in names if n.strip() in
-            ("gemini", "groq", "mistral")] or default.split(",")
+    valid = ("gemini", "groq", "mistral", "cerebras", "nvidia",
+             "github_models", "openrouter", "sambanova")
+    return [n.strip() for n in names if n.strip() in valid] \
+        or default.split(",")
 
-BUY_PANEL = _panel("BULL_PANEL", "gemini,groq")
-SELL_PANEL = _panel("BEAR_PANEL", "mistral,groq")
-JUDGE_PANEL = _panel("JUDGE_PANEL", "gemini,groq,mistral")
-ALL_PROVIDERS = ["gemini", "groq", "mistral"]
+BUY_PANEL = _panel("BULL_PANEL", "cerebras,groq")
+SELL_PANEL = _panel("BEAR_PANEL", "mistral,nvidia")
+JUDGE_PANEL = _panel("JUDGE_PANEL", "gemini,cerebras,sambanova")
+def _keyed_providers():
+    # the full pool the panel/rotation can draw from: every provider whose
+    # api key is present. was hardcoded to 3, which starved the rotation and
+    # left the other 5 keyed providers unused except as emergency subs
+    import os as _os
+    key_env = {
+        "gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY",
+        "mistral": "MISTRAL_API_KEY", "cerebras": "CEREBRAS_API_KEY",
+        "nvidia": "NVIDIA_API_KEY", "github_models": "GH_MODELS_TOKEN",
+        "openrouter": "OPENROUTER_API_KEY", "sambanova": "SAMBANOVA_API_KEY",
+    }
+    ordered = ["gemini", "groq", "mistral", "cerebras", "nvidia",
+               "github_models", "openrouter", "sambanova"]
+    keyed = [p for p in ordered if _os.environ.get(key_env[p])]
+    return keyed or ["gemini", "groq", "mistral"]
+
+ALL_PROVIDERS = _keyed_providers()
 
 
 def _seat_reply(prompt, preferred, used, schema):
