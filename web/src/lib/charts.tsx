@@ -132,7 +132,7 @@ export function EquityCurve({ equity }:
       date: e.date.slice(5), engine: +(100 * e.equity / base).toFixed(2),
     }));
     const first = clean[0]?.date;
-    fetch("/api/candles/SPY").then((r) => r.json()).then(({ candles }) => {
+    fetch("/api/candles/NIFTY").then((r) => r.json()).then(({ candles }) => {
       const spy = (candles || []).filter((c: { time: number }) =>
         new Date(c.time * 1000).toISOString().slice(0, 10) >= (first || ""));
       const spyBase = spy[0]?.close;
@@ -157,7 +157,7 @@ export function EquityCurve({ equity }:
               strokeWidth={2} dot={false} name="paper account" />
         <Line type="monotone" dataKey="spy" stroke="#71717a"
               strokeWidth={2} dot={false} strokeDasharray="5 3"
-              name="SPY benchmark" />
+              name="Nifty 50 benchmark" />
       </LineChart>
     </ResponsiveContainer>
   );

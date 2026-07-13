@@ -30,7 +30,7 @@ export default async function Performance() {
         <div>
           <h1 className="text-2xl font-bold">Performance</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Account equity against SPY, and every closed trade with its
+            Account equity against Nifty 50, and every closed trade with its
             realized result.{" "}
             {SITE_MODE === "LIVE"
               ? "Real money — every trade accountable."
