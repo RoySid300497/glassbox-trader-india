@@ -16,6 +16,7 @@ from inference.predictors import load_seq_predictor, load_rf_predictor
 def prepare_oos_frame(limit=None, start=OOS_START, end=OOS_END):
     # downloading yfinance data and rebuilding the training feature pipeline
     import yfinance as yf
+    from engine.yf_session import yf_download
     # preferring the refreshed current universe over the 2016 training roster
     uni_path = os.path.join(DATA_PATH, "universe.csv")
     sec_path = uni_path if os.path.exists(uni_path) \
@@ -39,7 +40,7 @@ def prepare_oos_frame(limit=None, start=OOS_START, end=OOS_END):
 
     log(f"downloading {len(tickers)} tickers from yfinance "
         f"({start} to {end})...")
-    raw = yf.download(list(yf_map.values()), start=start, end=end,
+    raw = yf_download(list(yf_map.values()), start=start, end=end,
                       group_by="ticker", auto_adjust=True, progress=False,
                       threads=True)
     frames = []

@@ -16,3 +16,4 @@ vaderSentiment
 supabase
 feedparser
 python-dotenv
+curl_cffi
