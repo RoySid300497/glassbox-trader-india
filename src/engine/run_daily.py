@@ -69,10 +69,11 @@ def run_ticker(ticker, source="technical"):
 def market_summary():
     # composing a factual market snapshot from index and volatility data
     import yfinance as yf
+    from engine.yf_session import yf_download
     parts = []
     for name, sym in [("Nifty 50", "^NSEI"), ("Nifty Bank", "^NSEBANK")]:
         try:
-            closes = yf.download(sym, period="10d", auto_adjust=True,
+            closes = yf_download(sym, period="10d", auto_adjust=True,
                                  progress=False)["Close"].squeeze()
             d1 = closes.pct_change().iloc[-1] * 100
             d5 = closes.pct_change(5).iloc[-1] * 100
@@ -80,7 +81,7 @@ def market_summary():
         except Exception:
             continue
     try:
-        vix = float(yf.download("^INDIAVIX", period="5d", auto_adjust=True,
+        vix = float(yf_download("^INDIAVIX", period="5d", auto_adjust=True,
                                 progress=False)["Close"].squeeze().iloc[-1])
         mood = "calm" if vix < 15 else "elevated" if vix < 25 else "stressed"
         parts.append(f"India VIX at {vix:.1f} ({mood})")
@@ -160,11 +161,16 @@ def run_daily():
     # exiting when today already ran, making catch-up crons safe
     from datetime import date as _date
     from engine.memory import get_client
+    import os as _os
+    force = _os.environ.get("FORCE_RUN", "").lower() in ("1", "true", "yes")
     already = get_client().table("decisions").select("id") \
         .gte("decided_at", str(_date.today())).limit(1).execute().data
-    if already:
-        print("decisions already exist today — skipping duplicate run")
+    if already and not force:
+        print("decisions already exist today — skipping duplicate run "
+              "(set FORCE_RUN=1 to override)")
         return
+    if already and force:
+        print("FORCE_RUN set — running again despite existing decisions today")
 
     if enabled():
         from engine.execution import trading_mode, base_url
@@ -244,13 +250,14 @@ def run_manage():
 def latest_prices(tickers):
     # fetching latest closes and returns for scoring and thesis review
     import yfinance as yf
+    from engine.yf_session import yf_download
     out = {}
     for t in tickers:
         try:
             from core.config import EXCHANGE_SUFFIX
             _st = (t if not EXCHANGE_SUFFIX or t.endswith(EXCHANGE_SUFFIX)
                    else t + EXCHANGE_SUFFIX)
-            hist = yf.download(_st, period="10d",
+            hist = yf_download(_st, period="10d",
                                auto_adjust=True, progress=False)
             closes = hist["Close"].squeeze()
             out[t] = {"close": float(closes.iloc[-1]),
@@ -266,6 +273,7 @@ def score_outcomes():
     # scoring each decision against the first trading day after it was made
     import pandas as pd
     import yfinance as yf
+    from engine.yf_session import yf_download
     pending = get_unscored_decisions()
     if not pending:
         print("nothing to score")
@@ -277,7 +285,7 @@ def score_outcomes():
             _sd = (d["ticker"] if not EXCHANGE_SUFFIX
                    or d["ticker"].endswith(EXCHANGE_SUFFIX)
                    else d["ticker"] + EXCHANGE_SUFFIX)
-            hist = yf.download(_sd, period="1mo",
+            hist = yf_download(_sd, period="1mo",
                                auto_adjust=True, progress=False)
             closes = hist["Close"].squeeze()
             closes.index = pd.to_datetime(closes.index).tz_localize(None)
