@@ -543,9 +543,10 @@ def latest_chandelier_long(df: pd.DataFrame) -> float:
 
 def _market_stage(last) -> str:
     # naming the weinstein stage from long-term regime, slope, and ranging
-    above = bool(last["above_ema200"])
-    rising = (last["ema200_slope"] or 0) > 0
-    ranging = bool(last["ranging"])
+    above = False if pd.isna(last["above_ema200"]) else bool(last["above_ema200"])
+    _slope = last["ema200_slope"]
+    rising = (0 if pd.isna(_slope) else _slope) > 0
+    ranging = False if pd.isna(last["ranging"]) else bool(last["ranging"])
     if above and rising and not ranging:
         return "stage 2 (advancing)"
     if not above and not rising and not ranging:
@@ -574,18 +575,28 @@ def technical_structure_block(df: pd.DataFrame) -> dict:
         val = last[key]
         return None if pd.isna(val) else round(float(val), digits)
 
+    def _int(key, default=0):
+        # NA-safe int: pandas NAType would crash int(); default when missing
+        val = last[key]
+        return default if pd.isna(val) else int(val)
+
+    def _bool(key):
+        # NA-safe bool: treat missing as False
+        val = last[key]
+        return False if pd.isna(val) else bool(val)
+
     return {
         "feature_version": STRUCTURE_FEATURE_VERSION,
-        "ema_regime": "above 50EMA" if last["above_ema"] else "below 50EMA",
-        "bars_in_regime": int(last["bars_since_ema_cross"]),
+        "ema_regime": "above 50EMA" if _bool("above_ema") else "below 50EMA",
+        "bars_in_regime": _int("bars_since_ema_cross"),
         "ema_dist_atr": _num("ema_dist_atr"),
-        "structure": trend_map[int(last["structure_trend"])],
+        "structure": trend_map[_int("structure_trend")],
         "bars_since_structure_break": _num("bars_since_structure_break", 0),
         "adx": _num("adx", 1),
         "nearest_bullish_fvg_atr_below": _num("fvg_bull_dist_atr"),
         "nearest_bearish_fvg_atr_above": _num("fvg_bear_dist_atr"),
         "momentum_asymmetry": _num("momentum_asymmetry"),
-        "exhaustion_breakout_today": bool(last["exhaustion_breakout"]),
+        "exhaustion_breakout_today": _bool("exhaustion_breakout"),
         "bull_divergence_bars_ago": _num("bars_since_bull_divergence", 0),
         "bear_divergence_bars_ago": _num("bars_since_bear_divergence", 0),
         "close_vs_volume_poc_atr": _num("poc_dist_atr"),
@@ -593,27 +604,27 @@ def technical_structure_block(df: pd.DataFrame) -> dict:
         "bear_liquidity_sweep_bars_ago": _num("bars_since_bear_sweep", 0),
         "volatility_capitulation_bars_ago":
             _num("bars_since_capitulation", 0),
-        "first_pullback": ("long setup" if last["first_pullback_long"]
+        "first_pullback": ("long setup" if _bool("first_pullback_long")
                            else "short setup"
-                           if last["first_pullback_short"] else None),
-        "ranging_market": bool(last["ranging"]),
+                           if _bool("first_pullback_short") else None),
+        "ranging_market": _bool("ranging"),
         "position_in_range_pct": _num("position_in_range"),
-        "bb_squeeze_active": bool(last["bb_squeeze"]),
-        "inside_bar_streak": int(last["inside_bar_streak"] or 0),
-        "first_red_after_run": bool(last["first_red_after_run"]),
+        "bb_squeeze_active": _bool("bb_squeeze"),
+        "inside_bar_streak": _int("inside_bar_streak"),
+        "first_red_after_run": _bool("first_red_after_run"),
         "gap_vs_prior_range": round(float(last["gap_vs_prior_range"]), 3),
-        "gap_above_prior_high": bool(last["gap_above_prior_high"]),
-        "gap_below_prior_low": bool(last["gap_below_prior_low"]),
-        "close_above_prior_high": bool(last["close_above_prior_high"]),
-        "close_below_prior_low": bool(last["close_below_prior_low"]),
-        "failed_gap_up": bool(last["failed_gap_up"]),
-        "failed_gap_down": bool(last["failed_gap_down"]),
+        "gap_above_prior_high": _bool("gap_above_prior_high"),
+        "gap_below_prior_low": _bool("gap_below_prior_low"),
+        "close_above_prior_high": _bool("close_above_prior_high"),
+        "close_below_prior_low": _bool("close_below_prior_low"),
+        "failed_gap_up": _bool("failed_gap_up"),
+        "failed_gap_down": _bool("failed_gap_down"),
         "close_in_prior_range": round(float(last["close_in_prior_range"]), 3),
-        "first_green_after_run": bool(last["first_green_after_run"]),
-        "above_200ema": bool(last["above_ema200"]),
+        "first_green_after_run": _bool("first_green_after_run"),
+        "above_200ema": _bool("above_ema200"),
         "market_stage": _market_stage(last),
         "rsi2": _num("rsi2"),
-        "connors_pullback_setup": bool(last["connors_pullback_long"]),
+        "connors_pullback_setup": _bool("connors_pullback_long"),
         "volume_trend": ("rising" if (last["volume_osc"] or 0) > 0.05
                          else "falling"
                          if (last["volume_osc"] or 0) < -0.05 else "flat")
