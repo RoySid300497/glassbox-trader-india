@@ -2,6 +2,7 @@
 import { supabase, Decision, PanelCase } from "@/lib/supabase";
 import { ActionBadge, ConfidenceBar, Disclaimer } from "@/lib/ui";
 import TradingViewChart from "@/lib/tradingview";
+import CandleChart from "@/lib/candle";
 
 export const dynamic = "force-dynamic";
 
@@ -62,11 +63,19 @@ export default async function Debate({ params }:
         · {d.risk_gate_note}
       </p>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 mt-6">
-        <h2 className="text-sm font-semibold text-zinc-300 mb-3">
-          Price action (TradingView, NSE)
-        </h2>
-        <TradingViewChart ticker={d.ticker} exchange="NSE" height={500} />
+      <div className="grid lg:grid-cols-2 gap-4 mt-6">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-300 mb-3">
+            TradingView (NSE, live)
+          </h2>
+          <TradingViewChart ticker={d.ticker} exchange="NSE" height={420} />
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-300 mb-3">
+            Price action at decision (6 months, decision marked)
+          </h2>
+          <CandleChart ticker={d.ticker} decisionTime={d.decided_at} />
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4 mt-6">
