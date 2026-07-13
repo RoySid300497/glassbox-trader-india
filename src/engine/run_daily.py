@@ -70,7 +70,7 @@ def market_summary():
     # composing a factual market snapshot from index and volatility data
     import yfinance as yf
     parts = []
-    for name, sym in [("S&P 500", "SPY"), ("Nasdaq 100", "QQQ")]:
+    for name, sym in [("Nifty 50", "^NSEI"), ("Nifty Bank", "^NSEBANK")]:
         try:
             closes = yf.download(sym, period="10d", auto_adjust=True,
                                  progress=False)["Close"].squeeze()
@@ -80,10 +80,10 @@ def market_summary():
         except Exception:
             continue
     try:
-        vix = float(yf.download("^VIX", period="5d", auto_adjust=True,
+        vix = float(yf.download("^INDIAVIX", period="5d", auto_adjust=True,
                                 progress=False)["Close"].squeeze().iloc[-1])
         mood = "calm" if vix < 15 else "elevated" if vix < 25 else "stressed"
-        parts.append(f"VIX at {vix:.1f} ({mood})")
+        parts.append(f"India VIX at {vix:.1f} ({mood})")
     except Exception:
         pass
     return "; ".join(parts) if parts else "market data unavailable"
@@ -247,7 +247,10 @@ def latest_prices(tickers):
     out = {}
     for t in tickers:
         try:
-            hist = yf.download(t.replace(".", "-"), period="10d",
+            from core.config import EXCHANGE_SUFFIX
+            _st = (t if not EXCHANGE_SUFFIX or t.endswith(EXCHANGE_SUFFIX)
+                   else t + EXCHANGE_SUFFIX)
+            hist = yf.download(_st, period="10d",
                                auto_adjust=True, progress=False)
             closes = hist["Close"].squeeze()
             out[t] = {"close": float(closes.iloc[-1]),
@@ -270,7 +273,11 @@ def score_outcomes():
     for d in pending:
         try:
             decided = pd.Timestamp(d["decided_at"]).tz_localize(None)
-            hist = yf.download(d["ticker"].replace(".", "-"), period="1mo",
+            from core.config import EXCHANGE_SUFFIX
+            _sd = (d["ticker"] if not EXCHANGE_SUFFIX
+                   or d["ticker"].endswith(EXCHANGE_SUFFIX)
+                   else d["ticker"] + EXCHANGE_SUFFIX)
+            hist = yf.download(_sd, period="1mo",
                                auto_adjust=True, progress=False)
             closes = hist["Close"].squeeze()
             closes.index = pd.to_datetime(closes.index).tz_localize(None)

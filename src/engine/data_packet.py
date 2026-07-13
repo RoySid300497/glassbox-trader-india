@@ -101,7 +101,10 @@ def _structure_block(ticker):
         import pandas as pd
         import yfinance as yf
         from pipeline.ta_structure import technical_structure_block
-        hist = yf.download(ticker.replace(".", "-"), period="1y",
+        from core.config import EXCHANGE_SUFFIX
+        _s = (ticker if not EXCHANGE_SUFFIX or ticker.endswith(EXCHANGE_SUFFIX)
+              else ticker + EXCHANGE_SUFFIX)
+        hist = yf.download(_s, period="1y",
                            auto_adjust=True, progress=False)
         if hist is None or hist.empty or len(hist) < 60:
             return None
@@ -121,7 +124,9 @@ def _overnight_gap(ticker):
         import pandas as pd
         import yfinance as yf
         from datetime import date
-        sym = ticker.replace(".", "-")
+        from core.config import EXCHANGE_SUFFIX
+        sym = (ticker if not EXCHANGE_SUFFIX or ticker.endswith(EXCHANGE_SUFFIX)
+               else ticker + EXCHANGE_SUFFIX)
         daily = yf.download(sym, period="5d", auto_adjust=True,
                             progress=False)
         if daily is None or daily.empty:

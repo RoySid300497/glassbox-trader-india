@@ -166,7 +166,11 @@ def score_model_predictions():
     for r in pending:
         try:
             decided = pd.Timestamp(r["pred_date"])
-            closes = yf.download(r["ticker"].replace(".", "-"), period="1mo",
+            from core.config import EXCHANGE_SUFFIX
+            _sr = (r["ticker"] if not EXCHANGE_SUFFIX
+                   or r["ticker"].endswith(EXCHANGE_SUFFIX)
+                   else r["ticker"] + EXCHANGE_SUFFIX)
+            closes = yf.download(_sr, period="1mo",
                                  auto_adjust=True, progress=False)["Close"] \
                 .squeeze()
             closes.index = pd.to_datetime(closes.index).tz_localize(None)
