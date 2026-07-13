@@ -19,8 +19,8 @@ PROVIDER_CONFIG = {
     "gemini": {
         "key_env": "GEMINI_API_KEY", "model_env": "GEMINI_MODEL",
         "models_url": "https://generativelanguage.googleapis.com/v1beta/models",
-        "hints": ["gemini-2.5-flash", "gemini-2.0-flash"],
-        "fallback": "gemini-2.5-flash",
+        "hints": ["gemini-flash-latest", "gemini-3.5-flash", "gemini-2.5-flash"],
+        "fallback": "gemini-flash-latest",
     },
     "groq": {
         "key_env": "GROQ_API_KEY", "model_env": "GROQ_MODEL",

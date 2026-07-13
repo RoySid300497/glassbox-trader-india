@@ -27,7 +27,15 @@ def prepare_oos_frame(limit=None, start=OOS_START, end=OOS_END):
     tickers = securities["symbol"].tolist()
     if limit:
         tickers = tickers[:limit]
-    yf_map = {t: t.replace(".", "-") for t in tickers}
+    # appending the exchange suffix for NSE downloads; the old
+    # replace(".", "-") was a US share-class convention that left india
+    # tickers without their .NS suffix and made every download fail
+    from core.config import EXCHANGE_SUFFIX
+    def _yf(t):
+        if EXCHANGE_SUFFIX and not t.endswith(EXCHANGE_SUFFIX):
+            return t + EXCHANGE_SUFFIX
+        return t.replace(".", "-")
+    yf_map = {t: _yf(t) for t in tickers}
 
     log(f"downloading {len(tickers)} tickers from yfinance "
         f"({start} to {end})...")
@@ -49,6 +57,17 @@ def prepare_oos_frame(limit=None, start=OOS_START, end=OOS_END):
         frames.append(sub[["date", "symbol", "open", "high", "low",
                            "close", "volume"]])
     if not frames:
+        log("all yfinance downloads failed (likely a transient Yahoo/rate "
+            "issue) — aborting this run rather than scanning nothing")
+        return None
+    # guard against a mass-failure where only a handful of tickers came back;
+    # proceeding would produce a meaningless 1-ticker screen
+    got = len(frames)
+    want = len(tickers)
+    if want >= 10 and got < max(5, want * 0.4):
+        log(f"only {got}/{want} tickers downloaded — likely a transient "
+            f"yfinance/rate issue; aborting rather than scanning a partial "
+            f"universe")
         return None
     df = pd.concat(frames, ignore_index=True)
     df = df.merge(securities, on="symbol", how="left")

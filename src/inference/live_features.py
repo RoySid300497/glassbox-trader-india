@@ -50,7 +50,12 @@ def fetch_close_series(symbol, days):
 
 def build_live_frame(ticker, days=250):
     # producing a feature dataframe for one ticker on current market data
-    hist = fetch_close_series(ticker.replace(".", "-"), days)
+    # forming the NSE symbol (append .NS); the old replace(".", "-") stripped
+    # the suffix and made every india download fail with "no timezone found"
+    from core.config import EXCHANGE_SUFFIX
+    _sym = (ticker if not EXCHANGE_SUFFIX or ticker.endswith(EXCHANGE_SUFFIX)
+            else ticker + EXCHANGE_SUFFIX)
+    hist = fetch_close_series(_sym, days)
     if hist is None:
         return None
     df = hist.rename(columns={"Date": "date", "Open": "open", "High": "high",
