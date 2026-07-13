@@ -536,9 +536,10 @@ def build_structure_features(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(parts, axis=1)
 
 
-def latest_chandelier_long(df: pd.DataFrame) -> float:
+def latest_chandelier_long(df: pd.DataFrame):
     """Returning the current long trailing stop for the executor's ratchet."""
-    return float(chandelier_exit(df)["chandelier_long"].iloc[-1])
+    val = chandelier_exit(df)["chandelier_long"].iloc[-1]
+    return None if pd.isna(val) else float(val)
 
 
 def _market_stage(last) -> str:
@@ -612,14 +613,14 @@ def technical_structure_block(df: pd.DataFrame) -> dict:
         "bb_squeeze_active": _bool("bb_squeeze"),
         "inside_bar_streak": _int("inside_bar_streak"),
         "first_red_after_run": _bool("first_red_after_run"),
-        "gap_vs_prior_range": round(float(last["gap_vs_prior_range"]), 3),
+        "gap_vs_prior_range": _num("gap_vs_prior_range", 3),
         "gap_above_prior_high": _bool("gap_above_prior_high"),
         "gap_below_prior_low": _bool("gap_below_prior_low"),
         "close_above_prior_high": _bool("close_above_prior_high"),
         "close_below_prior_low": _bool("close_below_prior_low"),
         "failed_gap_up": _bool("failed_gap_up"),
         "failed_gap_down": _bool("failed_gap_down"),
-        "close_in_prior_range": round(float(last["close_in_prior_range"]), 3),
+        "close_in_prior_range": _num("close_in_prior_range", 3),
         "first_green_after_run": _bool("first_green_after_run"),
         "above_200ema": _bool("above_ema200"),
         "market_stage": _market_stage(last),
