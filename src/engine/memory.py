@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TICKER_RE = re.compile(r"^[A-Z]{1,5}(\.[A-Z])?$")
+TICKER_RE = re.compile(r"^[A-Z0-9]{1,12}([&\-][A-Z0-9]{1,10})?(\.[A-Z]{1,3})?$")
 VALID_ACTIONS = {"BUY", "SELL", "NO_TRADE"}
 
 _client = None
