@@ -19,7 +19,18 @@ export async function GET(_req: Request,
   const sym = INDEX[raw] || (raw.endsWith(".NS") ? raw : raw + ".NS");
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=6mo&interval=1d`;
   try {
-    const r = await fetch(url, { next: { revalidate: 900 } });
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "Accept": "application/json",
+    };
+    let r = await fetch(url, { headers, next: { revalidate: 900 } });
+    if (!r.ok) {
+      // fall back to the alternate yahoo host if the first is blocked
+      const alt = url.replace("query1.", "query2.");
+      r = await fetch(alt, { headers, next: { revalidate: 900 } });
+    }
     const j = await r.json();
     const res = j?.chart?.result?.[0];
     const q = res?.indicators?.quote?.[0];
