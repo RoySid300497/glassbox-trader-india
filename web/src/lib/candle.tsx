@@ -28,13 +28,26 @@ export default function CandleChart({ ticker, decisionTime }:
       .then((r) => r.json())
       .then(({ candles }) => {
         if (!candles?.length) return;
-        series.setData(candles);
+        // lightweight-charts fails silently on null OHLC or unsorted/dupe
+        // times; the last bar often has close:null (today, incomplete)
+        type C = { time: number; open: number; high: number;
+                   low: number; close: number };
+        const seen = new Set<number>();
+        const clean: C[] = (candles as C[])
+          .filter((c) =>
+            c && c.time != null &&
+            c.open != null && c.high != null &&
+            c.low != null && c.close != null)
+          .filter((c) => (seen.has(c.time) ? false : seen.add(c.time)))
+          .sort((a, b) => a.time - b.time);
+        if (!clean.length) return;
+        series.setData(clean as never);
         if (decisionTime) {
           const ts = Math.floor(new Date(decisionTime).getTime() / 1000);
-          const nearest = candles.reduce(
-            (best: { time: number }, c: { time: number }) =>
+          const nearest = clean.reduce(
+            (best, c) =>
               Math.abs(c.time - ts) < Math.abs(best.time - ts) ? c : best,
-            candles[0]);
+            clean[0]);
           createSeriesMarkers(series, [{
             time: nearest.time as UTCTimestamp, position: "aboveBar",
             color: "#38bdf8", shape: "arrowDown", text: "decision",
