@@ -219,7 +219,45 @@ def _openai_style(provider, prompt):
     if r.status_code >= 400:
         # surfacing the body so a 4xx explains itself in the log
         raise RuntimeError(f"{r.status_code}: {r.text[:200]}")
-    return r.json()["choices"][0]["message"]["content"]
+    data = r.json()
+    return _extract_content(data, provider)
+
+
+def _extract_content(data, provider):
+    # robustly pulling the text out of an openai-style response. providers
+    # vary: some put it in message.content, some in message.reasoning_content,
+    # some return content as a list of parts, some nest differently. we try
+    # each known shape rather than assuming one, so a valid reply from
+    # cerebras/nvidia/etc is never dropped as a "'content'" KeyError
+    try:
+        choices = data.get("choices") or []
+        if not choices:
+            raise KeyError("no choices in response")
+        msg = choices[0].get("message") or {}
+        # 1. standard string content
+        content = msg.get("content")
+        if isinstance(content, str) and content.strip():
+            return content
+        # 2. content as a list of parts (some providers)
+        if isinstance(content, list):
+            texts = [p.get("text", "") if isinstance(p, dict) else str(p)
+                     for p in content]
+            joined = "".join(texts).strip()
+            if joined:
+                return joined
+        # 3. reasoning-style field some providers use
+        for alt in ("reasoning_content", "reasoning", "text"):
+            v = msg.get(alt)
+            if isinstance(v, str) and v.strip():
+                return v
+        # 4. top-level text some providers use
+        if isinstance(choices[0].get("text"), str) and choices[0]["text"].strip():
+            return choices[0]["text"]
+    except Exception as e:
+        raise RuntimeError(f"{provider}: unparseable response ({e}); "
+                           f"keys={list(data.keys())}")
+    raise RuntimeError(f"{provider}: empty/unknown response shape; "
+                       f"keys={list(data.keys())}")
 
 
 def ask_gemini(prompt):
