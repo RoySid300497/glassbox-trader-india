@@ -1,0 +1,13 @@
+name: whichdb
+on:
+  workflow_dispatch:
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    steps:
+      - name: show supabase url
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          echo "This repo's SUPABASE_URL project ref:"
+          echo "$SUPABASE_URL" | sed 's|https://||; s|.supabase.co||'
