@@ -34,6 +34,55 @@ def _envint(name, default):
 
 DEBATE_BUDGET = _envint("DEBATE_BUDGET", 10)
 DEBATE_COOLDOWN_DAYS = _envint("DEBATE_COOLDOWN_DAYS", 2)
+COOLDOWN_OVERRIDE_MOVE_PCT = float(
+    os.environ.get("COOLDOWN_OVERRIDE_MOVE_PCT", "5.0"))
+
+
+def cooldown_overrides(recently_debated):
+    # releasing a cooled-down ticker back into contention only when something
+    # material happened: strong news salience (A) or a big price move (B).
+    # quiet cooldown names stay excluded so quota is preserved.
+    if not recently_debated:
+        return set()
+    released = set()
+    # A: strong news salience — news_scout already ranks by salience
+    try:
+        from engine.news_scout import news_pins
+        for t, why in news_pins(exclude=None):
+            if t in recently_debated:
+                released.add(t)
+    except Exception as e:
+        print(f"[cooldown] news override unavailable: {e}")
+    # B: big price move since roughly when it was last debated
+    try:
+        import pandas as pd
+        from core.config import EXCHANGE_SUFFIX
+        from engine.yf_session import yf_download
+        for t in recently_debated:
+            if t in released:
+                continue
+            sym = (t if not EXCHANGE_SUFFIX or t.endswith(EXCHANGE_SUFFIX)
+                   else t + EXCHANGE_SUFFIX)
+            try:
+                raw = yf_download(sym, period=f"{DEBATE_COOLDOWN_DAYS + 3}d",
+                                  auto_adjust=True, progress=False)
+                if isinstance(raw.columns, pd.MultiIndex):
+                    raw.columns = raw.columns.get_level_values(0)
+                closes = raw["Close"].squeeze().dropna()
+                if len(closes) < DEBATE_COOLDOWN_DAYS + 1:
+                    continue
+                move = (closes.iloc[-1]
+                        / closes.iloc[-(DEBATE_COOLDOWN_DAYS + 1)] - 1) * 100
+                if abs(move) >= COOLDOWN_OVERRIDE_MOVE_PCT:
+                    released.add(t)
+                    print(f"[cooldown] releasing {t}: moved {move:+.1f}%")
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[cooldown] move override unavailable: {e}")
+    if released:
+        print(f"[cooldown] override released {len(released)}: {sorted(released)}")
+    return released
 DEBATE_PAUSE_SEC = _envint("DEBATE_PAUSE_SEC", 20)
 SCAN_LIMIT = os.environ.get("SCAN_LIMIT")   # optional ticker cap for testing
 WATCHLIST = ["AAPL", "MSFT", "GOOGL", "NVDA", "JPM"]   # fallback only
@@ -191,6 +240,7 @@ def run_daily():
 
     limit = int(SCAN_LIMIT) if SCAN_LIMIT and str(SCAN_LIMIT).strip() else None
     recently_debated = set(get_recent_tickers(days=DEBATE_COOLDOWN_DAYS))
+    recently_debated -= cooldown_overrides(recently_debated)
     watchlist, picks, scan, sources = pick_watchlist(recently_debated, limit)
     if scan:
         save_screen_results(scan, top_n=max(40, DEBATE_BUDGET + 10))
