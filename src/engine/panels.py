@@ -88,7 +88,11 @@ def _judge_prompt(packet, bull, bear, bull_reb, bear_reb):
     import json
     return ("You are an impartial judge. Read the debate and vote. Strike "
             "any claim whose evidence_field is not actually in the packet. "
-            "Vote NO_TRADE when evidence is weak or balanced.\n" + GROUNDING +
+            "Vote for the direction the weight of evidence favors, even "
+            "when the edge is moderate. Reserve NO_TRADE for cases where "
+            "bullish and bearish evidence are genuinely balanced or both "
+            "sides are unsupported \u2014 not merely because conviction is "
+            "less than certain.\n" + GROUNDING +
             '\njson schema: {"vote": "BUY"|"SELL"|"NO_TRADE", '
             '"reason": str, "confidence": float 0-1}\n\nBULL CASES:\n'
             + json.dumps(bull, default=str)[:1200] + "\nBEAR CASES:\n"

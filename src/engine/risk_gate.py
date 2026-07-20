@@ -1,10 +1,11 @@
 """enforcing hard trading limits in code that no llm output can override"""
+import os
 
 from engine.memory import get_client, get_active_thesis
 
 MAX_POSITION_FRACTION = 0.10     # limiting any single position to 10% of capital
 MAX_DAILY_TRADES = 3             # capping new trades per day
-MIN_JUDGE_CONFIDENCE = 0.5       # requiring average judge conviction to act
+MIN_JUDGE_CONFIDENCE = float(os.environ.get("MIN_JUDGE_CONFIDENCE", "0.40"))  # avg judge conviction to act (env-tunable)
 MIN_JUDGE_QUORUM = 2            # refusing action on a single judge's vote
 
 
