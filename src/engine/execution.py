@@ -359,18 +359,34 @@ def paper_report():
 
 
 def is_trading_day():
-    # skipping weekends and NSE holidays
+    # dynamic NSE session check — no hardcoded holiday list to maintain yearly.
+    # primary: exchange_calendars (maintained NSE/BSE calendar, auto-updates).
+    # fallback: yfinance (did a liquid index actually trade today?).
+    # final fallback: weekday check. errs toward OPEN only as a last resort.
     today = date.today()
     if today.weekday() >= 5:
         return False
-    return today.isoformat() not in _nse_holidays()
 
+    # primary — maintained exchange calendar (XBOM covers NSE/BSE holidays)
+    try:
+        import exchange_calendars as xcals
+        import pandas as pd
+        cal = xcals.get_calendar("XBOM")
+        return bool(cal.is_session(pd.Timestamp(today)))
+    except Exception:
+        pass
 
-def _nse_holidays():
-    # a static NSE holiday set; refresh yearly. absent dates default to open
-    return {
-        # 2026 NSE trading holidays (partial — extend as published)
-        "2026-01-26", "2026-03-06", "2026-03-25", "2026-04-01",
-        "2026-04-03", "2026-04-14", "2026-05-01", "2026-08-15",
-        "2026-10-02", "2026-11-04", "2026-12-25",
-    }
+    # fallback — did the Nifty 50 actually trade today? (holidays => no bar)
+    try:
+        import yfinance as yf
+        hist = yf.download("^NSEI", period="5d", auto_adjust=True,
+                           progress=False)
+        if hist is not None and len(hist):
+            import pandas as pd
+            last_session = pd.Timestamp(hist.index[-1]).date()
+            return last_session == today
+    except Exception:
+        pass
+
+    # last resort — weekday already passed above; assume open
+    return True
