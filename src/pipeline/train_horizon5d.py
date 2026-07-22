@@ -32,7 +32,7 @@ EVAL_DAYS = 60
 WARMUP_DAYS = 120
 H5_DAYS = 5
 H5_THRESHOLD = 0.01 * math.sqrt(H5_DAYS)     # ±2.236%
-KIND = "cnn1d"
+ROSTER = ["cnn1d", "lstm", "gru", "tcn", "transformer"]  # same roster as the daily tournament
 
 
 def build_sequences_5d(frame, feature_cols, window=SEQ_WINDOW):
@@ -135,12 +135,26 @@ def main():
     cw = (counts.sum() / (3 * np.maximum(counts, 1))).tolist()
     rtr = np.zeros(len(ytr), dtype="float32")
 
-    log(f"training {KIND} on {len(Xtr):,} sequences (5d label)...")
-    val_f1, model = train_eval_seq(KIND, "classification",
-                                   Xtr, rtr, ytr, Xva, yva,
-                                   return_model=True, class_weights=cw)
-    chal_f1, _ = score_seq_model(model, "classification", Xe, ye)
-    log(f"challenger: val {val_f1:.4f} | eval {chal_f1:.4f}")
+    # training the FULL roster on 5d labels and electing the best on the
+    # holdout — mirroring the daily tournament in retrain_cnn.py rather than
+    # assuming one architecture wins for this horizon
+    roster_results = {}
+    for kind in ROSTER:
+        try:
+            vf1, mdl = train_eval_seq(kind, "classification",
+                                      Xtr, rtr, ytr, Xva, yva,
+                                      return_model=True, class_weights=cw)
+            ef1, _ = score_seq_model(mdl, "classification", Xe, ye)
+            roster_results[kind] = (ef1, vf1, mdl)
+            log(f"  {kind:12s}: val {vf1:.4f} | eval {ef1:.4f}")
+        except Exception as e:
+            log(f"  {kind:12s}: failed ({e})")
+    if not roster_results:
+        log("no architecture trained — aborting")
+        return
+    best_kind = max(roster_results, key=lambda k: roster_results[k][0])
+    chal_f1, _, model = roster_results[best_kind]
+    log(f"best 5d architecture: {best_kind} (eval {chal_f1:.4f})")
 
     incumbent = load_existing_5d()
     inc_f1 = score_incumbent(incumbent, eval_df)
@@ -165,14 +179,14 @@ def main():
     fit_scaled[feature_cols] = deploy_scaler.transform(
         fit_scaled[feature_cols])
     aX, ay = build_sequences_5d(fit_scaled, feature_cols)
-    _, deploy_model = train_eval_seq(KIND, "classification",
+    _, deploy_model = train_eval_seq(best_kind, "classification",
                                      aX, np.zeros(len(ay), dtype="float32"),
                                      ay, aX, ay, return_model=True,
                                      class_weights=cw)
     torch.save(deploy_model.state_dict(),
                os.path.join(MODEL_PATH, "seq_model_5d.pt"))
     with open(os.path.join(MODEL_PATH, "seq_meta_5d.pkl"), "wb") as f:
-        pickle.dump({"kind": KIND, "head": "classification",
+        pickle.dump({"kind": best_kind, "head": "classification",
                      "feature_cols": feature_cols, "window": SEQ_WINDOW,
                      "threshold": H5_THRESHOLD, "horizon_days": H5_DAYS,
                      "n_features": len(feature_cols),
