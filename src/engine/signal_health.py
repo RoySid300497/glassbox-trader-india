@@ -112,7 +112,8 @@ def agreement_multiplier(ticker):
     # exclude the constant baselines and ensemble from the agreement vote
     votes = [r["direction"] for r in rows
              if not r["model"].startswith("always_")
-             and r["model"] != "ensemble"]
+             and r["model"] != "ensemble"
+             and not str(r["model"]).endswith("_5d")]
     if len(votes) < 3:
         return 1.0, None            # not enough to judge; don't penalize
     top = max(set(votes), key=votes.count)
@@ -122,6 +123,36 @@ def agreement_multiplier(ticker):
     mult = round(floor + (1.0 - floor) * max(0.0, (frac - 0.5) / 0.5), 3)
     mult = min(1.0, max(floor, mult))
     return mult, {"agree_frac": round(frac, 2), "n": len(votes), "top": top}
+
+
+def horizon5d_multiplier(ticker):
+    # soft regime scaling per the verified table (hard conflicts are blocked
+    # in risk_gate before sizing): low-confidence 5d -> 0.75 (no tailwind),
+    # confident Neutral (rangebound) -> 0.6, aligned confident Up -> 1.0.
+    # maybe_enter only opens longs, so alignment is judged against BUY.
+    try:
+        from datetime import date, timedelta
+        h5_conf = float(os.environ.get("H5_MIN_CONFIDENCE", "0.5"))
+        cutoff = str(date.today() - timedelta(days=5))
+        rows = get_client().table("model_predictions") \
+            .select("direction,confidence,pred_date") \
+            .eq("ticker", ticker).eq("model", "cnn1d_5d") \
+            .gte("pred_date", cutoff) \
+            .order("pred_date", desc=True).limit(1).execute().data
+        if not rows:
+            return 1.0, None
+        h5 = rows[0]
+        conf = h5.get("confidence", 0)
+        info = {"direction": h5["direction"], "confidence": conf}
+        if conf < h5_conf:
+            return 0.75, info          # choppy/unclear regime — no tailwind
+        if h5["direction"] == "Neutral":
+            return 0.6, info           # confident rangebound — momentum suspect
+        if h5["direction"] == "Down":
+            return 0.5, info           # safety net (gate should have blocked)
+        return 1.0, info               # confident Up — aligned with a long
+    except Exception:
+        return 1.0, None
 
 
 def signal_risk_multiplier(ticker=None):
@@ -136,6 +167,9 @@ def signal_risk_multiplier(ticker=None):
         am, ainfo = agreement_multiplier(ticker)
         mult = round(mult * am, 3)
         detail["agreement"] = ainfo
+        hm, hinfo = horizon5d_multiplier(ticker)
+        mult = round(mult * hm, 3)
+        detail["horizon_5d"] = hinfo
     mult = min(1.0, max(DERISK_FLOOR, mult))
     detail["risk_multiplier"] = mult
     return mult, detail

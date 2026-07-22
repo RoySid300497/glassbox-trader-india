@@ -34,6 +34,30 @@ def load_seq_predictor():
         return None
 
 
+def load_5d_predictor():
+    # loading the 5-day regime model, failing gracefully when absent
+    meta_path = os.path.join(MODEL_PATH, "seq_meta_5d.pkl")
+    if not os.path.exists(meta_path):
+        return None
+    try:
+        import torch
+        from pipeline.sequence_models import make_torch_model
+        with open(meta_path, "rb") as f:
+            meta = pickle.load(f)
+        with open(os.path.join(MODEL_PATH, "seq_scaler_5d.pkl"), "rb") as f:
+            scaler = pickle.load(f)
+        model = make_torch_model(meta["kind"], meta["n_features"],
+                                 meta["head"], window=meta["window"])
+        model.load_state_dict(
+            torch.load(os.path.join(MODEL_PATH, "seq_model_5d.pt"),
+                       map_location="cpu"))
+        model.eval()
+        return {"model": model, "scaler": scaler, "meta": meta}
+    except Exception as e:
+        log(f"5d regime model unavailable ({e})")
+        return None
+
+
 def load_rf_predictor():
     # loading the saved random forest with its preprocessing objects
     if not os.path.exists(os.path.join(MODEL_PATH, "rf_model.pkl")):

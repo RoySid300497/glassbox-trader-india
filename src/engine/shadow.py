@@ -151,6 +151,19 @@ def record_predictions(ticker):
         rows.append({"model": f"always_{const.lower()}",
                      "direction": const, "confidence": 0.3333})
 
+    # recording the 5-day regime model separately (after the ensemble vote so
+    # it never pollutes the daily consensus; scored against the 5th close)
+    try:
+        from inference.predictors import load_5d_predictor
+        b5 = load_5d_predictor()
+        if b5:
+            pred5 = _seq_predict(b5, df)
+            if pred5:
+                rows.append({"model": "cnn1d_5d",
+                             "direction": pred5[0], "confidence": pred5[1]})
+    except Exception:
+        pass
+
     payload = [{"pred_date": str(date.today()), "ticker": ticker, **r}
                for r in rows]
     if payload:
@@ -178,9 +191,19 @@ def score_model_predictions():
             after = closes[closes.index > decided]
             if before.empty or after.empty:
                 continue
-            ret = float(after.iloc[0]) / float(before.iloc[-1]) - 1
-            label = ("Up" if ret > 0.01
-                     else "Down" if ret < -0.01 else "Neutral")
+            if str(r["model"]).endswith("_5d"):
+                # the regime model predicts the 5-DAY move: wait for the 5th
+                # close after the prediction date, threshold ±1%*sqrt(5)
+                if len(after) < 5:
+                    continue
+                thr5 = 0.02236
+                ret = float(after.iloc[4]) / float(before.iloc[-1]) - 1
+                label = ("Up" if ret > thr5
+                         else "Down" if ret < -thr5 else "Neutral")
+            else:
+                ret = float(after.iloc[0]) / float(before.iloc[-1]) - 1
+                label = ("Up" if ret > 0.01
+                         else "Down" if ret < -0.01 else "Neutral")
             get_client().table("model_predictions").update(
                 {"outcome_label": label,
                  "was_correct": r["direction"] == label,

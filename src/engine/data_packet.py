@@ -280,6 +280,42 @@ def _value_area_block(ticker):
         return None
 
 
+def _horizon_5d_block(ticker):
+    # the 5-day regime read: which way is the tide flowing this week?
+    # judges use it as CONTEXT for the daily call — it filters and scales,
+    # it never creates trades. tolerant of any failure.
+    try:
+        from inference.predictors import load_5d_predictor
+        from inference.live_features import build_live_frame, \
+            fill_missing_features
+        import numpy as np
+        import torch
+        b = load_5d_predictor()
+        if not b:
+            return None
+        df = build_live_frame(ticker)
+        if df is None or df.empty:
+            return None
+        meta = b["meta"]
+        d = fill_missing_features(df.copy(), meta["feature_cols"], b["scaler"])
+        if len(d) < meta["window"]:
+            return None
+        win = b["scaler"].transform(
+            d.iloc[-meta["window"]:][meta["feature_cols"]]
+            .values.astype("float32"))
+        with torch.no_grad():
+            out = b["model"](torch.tensor(win).unsqueeze(0)).numpy().squeeze()
+        p = np.exp(out) / np.exp(out).sum()
+        i = int(p.argmax())
+        return {"direction": meta["classes"][i],
+                "confidence": round(float(p[i]), 4),
+                "horizon_days": int(meta.get("horizon_days", 5)),
+                "note": ("5-day regime read: context for the daily call, "
+                         "not an entry signal")}
+    except Exception:
+        return None
+
+
 def build_packet(ticker, news_items):
     # combining signal, structure, news, history, lessons, thesis, and context
     from engine.news_fetcher import fetch_next_earnings
@@ -311,6 +347,7 @@ def build_packet(ticker, news_items):
         if sentiments else None,
         # one c-grade opinion among many, deliberately not the headline
         "cnn_signal": get_cnn_signal(ticker),
+        "horizon_5d": _horizon_5d_block(ticker),
         "value_area": _value_area_block(ticker),
         "recent_decisions": get_recent_decisions(ticker, limit=5),
         "lessons": get_active_lessons(limit=8),
@@ -327,3 +364,5 @@ def packet_to_text(packet):
     return ("=== DATA PACKET (the only permitted evidence) ===\n"
             + json.dumps(packet, indent=1, default=str)[:6000]
             + "\n=== END DATA PACKET ===")
+
+
