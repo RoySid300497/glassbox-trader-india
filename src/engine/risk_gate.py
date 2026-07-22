@@ -9,6 +9,61 @@ MAX_POSITION_FRACTION = 0.10     # limiting any single position to 10% of capita
 CAP_OVERRIDE_CONFIDENCE = float(
     os.environ.get("CAP_OVERRIDE_CONFIDENCE", "0.70"))
 
+# minimum reward-to-risk ratio required to act. the transcript's core rule:
+# "if I'm wrong what do I lose, if I'm right what do I gain — is the math in my
+# favor?" risk = distance to the chandelier stop; reward = an ATR-multiple
+# target. trades whose upside does not justify their downside are rejected even
+# when judges are confident. env-tunable; set to 0 to disable.
+MIN_REWARD_RISK = float(os.environ.get("MIN_REWARD_RISK", "1.0"))
+TARGET_ATR_MULT = float(os.environ.get("TARGET_ATR_MULT", "3.0"))
+
+
+def _reward_risk(ticker, decision):
+    # returns (rr_ratio, note) using the SAME atr + chandelier logic as
+    # pipeline.ta_structure, computed from recent daily bars. fails OPEN
+    # (returns None) if data is unavailable, so it never blocks on a fetch error.
+    try:
+        import pandas as pd
+        from pipeline.ta_structure import _atr, chandelier_exit
+        try:
+            from engine.yf_session import yf_download
+            from core.config import EXCHANGE_SUFFIX
+            sym = (ticker if not EXCHANGE_SUFFIX or ticker.endswith(EXCHANGE_SUFFIX)
+                   else ticker + EXCHANGE_SUFFIX)
+        except Exception:
+            import yfinance as yf
+            yf_download = lambda s, **k: yf.download(s, **k)
+            sym = ticker.replace(".", "-")
+        raw = yf_download(sym, period="60d", auto_adjust=True, progress=False)
+        if raw is None or len(raw) < 25:
+            return None, "rr: insufficient data (skipped)"
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        df = raw.rename(columns=str.lower)[["high", "low", "close"]].dropna()
+        if len(df) < 25:
+            return None, "rr: insufficient data (skipped)"
+        atr = float(_atr(df).iloc[-1])
+        price = float(df["close"].iloc[-1])
+        if atr <= 0 or price <= 0:
+            return None, "rr: bad atr/price (skipped)"
+        ch = chandelier_exit(df)
+        if decision == "BUY":
+            stop = float(ch["chandelier_long"].iloc[-1])
+            risk = price - stop
+            reward = TARGET_ATR_MULT * atr          # target = N*ATR above entry
+        elif decision == "SELL":
+            stop = float(ch["chandelier_short"].iloc[-1])
+            risk = stop - price
+            reward = TARGET_ATR_MULT * atr          # N*ATR below entry
+        else:
+            return None, "rr: n/a"
+        if risk <= 0:
+            return None, "rr: non-positive risk (skipped)"
+        rr = reward / risk
+        return rr, f"rr={rr:.2f} (reward {reward:.2f} / risk {risk:.2f})"
+    except Exception as e:
+        return None, f"rr: unavailable ({e})"
+
 
 def _max_daily_trades():
     # flexible daily trade cap: scales with how many stocks we actually debate
@@ -73,6 +128,13 @@ def apply_gate(ticker, verdict):
         if avg_conf < MIN_JUDGE_CONFIDENCE:
             return "NO_TRADE", (f"gate: avg judge confidence {avg_conf:.2f} "
                                 f"below {MIN_JUDGE_CONFIDENCE}")
+
+    # blocking trades whose reward does not justify the risk (asymmetry rule)
+    if decision != "NO_TRADE" and MIN_REWARD_RISK > 0:
+        rr, rr_note = _reward_risk(ticker, decision)
+        if rr is not None and rr < MIN_REWARD_RISK:
+            return "NO_TRADE", (f"gate: reward-to-risk {rr:.2f} below "
+                                f"{MIN_REWARD_RISK} ({rr_note})")
 
     # blocking trades past the daily cap
     # daily cap with a high-conviction override: once the soft cap is reached,
