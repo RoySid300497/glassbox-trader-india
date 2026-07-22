@@ -232,6 +232,54 @@ def _delivery_block(ticker):
         return None
 
 
+def _value_area_block(ticker):
+    # DAILY value-area signal adapted from the transcript's VWAP/deviation-band
+    # idea. true VWAP is intraday; on daily bars we approximate the "value area"
+    # with a volume-weighted moving average (VWMA) and +/- deviation bands, then
+    # report where price sits relative to it. this is an APPROXIMATION, not
+    # intraday VWAP — named "value_area" to avoid implying otherwise. tolerant
+    # of any failure so it never blocks the packet.
+    try:
+        import numpy as np
+        import yfinance as yf
+        sym = ticker if ticker.endswith(".NS") else ticker + ".NS"
+        hist = yf.download(sym, period="3mo", auto_adjust=True, progress=False)
+        if hist is None or len(hist) < 25:
+            return None
+        import pandas as pd
+        if isinstance(hist.columns, pd.MultiIndex):
+            hist.columns = hist.columns.get_level_values(0)
+        close = hist["Close"].astype(float).to_numpy().ravel()
+        vol = hist["Volume"].astype(float).to_numpy().ravel()
+        n = 20
+        if len(close) < n or vol[-n:].sum() <= 0:
+            return None
+        # volume-weighted moving average over the last n days
+        vwma = float(np.sum(close[-n:] * vol[-n:]) / np.sum(vol[-n:]))
+        # deviation band = std of price around the vwma over the window
+        band = float(np.std(close[-n:]))
+        price = float(close[-1])
+        if band <= 0:
+            return None
+        # z = how many bands price sits above/below the value area centre
+        z = round((price - vwma) / band, 2)
+        if z >= 1.0:
+            zone = "above_value"       # extended above value — trend/overbought
+        elif z <= -1.0:
+            zone = "below_value"       # extended below value — trend/oversold
+        else:
+            zone = "in_value"          # trading inside the value area
+        return {
+            "vwma_20d": round(vwma, 2),
+            "price_vs_value_z": z,
+            "zone": zone,
+            "note": ("daily VWMA approximation of value area, "
+                     "not intraday VWAP"),
+        }
+    except Exception:
+        return None
+
+
 def build_packet(ticker, news_items):
     # combining signal, structure, news, history, lessons, thesis, and context
     from engine.news_fetcher import fetch_next_earnings
@@ -263,6 +311,7 @@ def build_packet(ticker, news_items):
         if sentiments else None,
         # one c-grade opinion among many, deliberately not the headline
         "cnn_signal": get_cnn_signal(ticker),
+        "value_area": _value_area_block(ticker),
         "recent_decisions": get_recent_decisions(ticker, limit=5),
         "lessons": get_active_lessons(limit=8),
         "active_thesis": get_active_thesis(ticker),
