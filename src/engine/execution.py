@@ -18,16 +18,16 @@ from engine.memory import get_client, validate_ticker
 
 load_dotenv()
 
-RISK_PER_TRADE = 0.01
-STOP_ATR_MULT = 1.5
-REWARD_RISK = 2.0
-PARTIAL_R = 1.0
-MAX_POSITION_FRACTION = 0.10
-MAX_DRAWDOWN_HALT = 0.10
-MAX_HOLD_DAYS = 10
-EARNINGS_BLACKOUT_DAYS = 2
-START_EQUITY = 1_000_000.0        # ₹10 lakh notional paper book
-CIRCUIT_BAND = 0.10               # cap simulated fills within a 10% daily band
+RISK_PER_TRADE = float(os.environ.get("RISK_PER_TRADE", "0.01"))
+STOP_ATR_MULT = float(os.environ.get("STOP_ATR_MULT", "1.5"))
+REWARD_RISK = float(os.environ.get("REWARD_RISK", "2.0"))
+PARTIAL_R = float(os.environ.get("PARTIAL_R", "1.0"))
+MAX_POSITION_FRACTION = float(os.environ.get("MAX_POSITION_FRACTION", "0.10"))
+MAX_DRAWDOWN_HALT = float(os.environ.get("MAX_DRAWDOWN_HALT", "0.10"))
+MAX_HOLD_DAYS = int(os.environ.get("MAX_HOLD_DAYS", "10"))
+EARNINGS_BLACKOUT_DAYS = int(os.environ.get("EARNINGS_BLACKOUT_DAYS", "2"))
+START_EQUITY = float(os.environ.get("START_EQUITY", "1000000.0"))        # ₹10 lakh notional paper book
+CIRCUIT_BAND = float(os.environ.get("CIRCUIT_BAND", "0.10"))               # cap simulated fills within a 10% daily band
 
 
 def trading_mode():

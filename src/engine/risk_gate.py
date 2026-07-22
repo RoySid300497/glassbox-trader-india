@@ -3,7 +3,7 @@ import os
 
 from engine.memory import get_client, get_active_thesis
 
-MAX_POSITION_FRACTION = 0.10     # limiting any single position to 10% of capital
+MAX_POSITION_FRACTION = float(os.environ.get("MAX_POSITION_FRACTION", "0.10"))  # single-position cap
 # a high-conviction trade may exceed the soft cap; this is the confidence
 # (of the winning side) required to do so, and the hard ceiling it still obeys.
 CAP_OVERRIDE_CONFIDENCE = float(
@@ -97,7 +97,7 @@ def _winning_side_confidence(decision, votes):
              if v.get("vote") == decision]
     return (sum(agree) / len(agree)) if agree else 0.0
 MIN_JUDGE_CONFIDENCE = float(os.environ.get("MIN_JUDGE_CONFIDENCE", "0.40"))  # avg judge conviction to act (env-tunable)
-MIN_JUDGE_QUORUM = 2            # refusing action on a single judge's vote
+MIN_JUDGE_QUORUM = int(os.environ.get("MIN_JUDGE_QUORUM", "2"))  # refusing action on a single judge's vote
 
 
 def count_trades_today():
