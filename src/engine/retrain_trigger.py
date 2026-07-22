@@ -9,7 +9,7 @@ MIN_SCORED = 40            # requiring enough champion evidence before judging
 DECAY_THRESHOLD = 0.36     # flagging hit rates decaying toward the 1/3 baseline
 DOMINANCE_MARGIN = 0.07    # flagging any shadow clearly beating the champion
 DOMINANCE_MIN_N = 30       # requiring enough shadow evidence for dominance
-COOLDOWN_DAYS = 14         # spacing retrains so each model gets judged fairly
+COOLDOWN_DAYS = int(os.environ.get("RETRAIN_COOLDOWN_DAYS", "10"))  # spacing retrains (env-tunable)
 WINDOW = 200               # judging over the most recent scored predictions
 PEER_MIN_N = 20            # requiring peer evidence for the anomaly guard
 
@@ -38,12 +38,39 @@ def _stats():
     return get_champion(), {m: (c / n, n) for m, (c, n) in agg.items()}
 
 
+def _signal_health_context():
+    # pulling richer performance context from the signal_health module so the
+    # retrain decision uses drift state + calibration, not hit rate alone.
+    # read-only; tolerant of any failure so it never blocks the trigger.
+    try:
+        from engine.signal_health import drift_status, calibration_report
+        d = drift_status()
+        cal = calibration_report()
+        return d, cal
+    except Exception as e:
+        print(f"retrain trigger: signal_health context unavailable ({e})")
+        return None, None
+
+
 def retrain_signal():
     # returning a human-readable reason when performance demands a retrain
     champion, rates = _stats()
     champ_rate, champ_n = rates.get(champion, (None, 0))
     if champ_n < MIN_SCORED:
         return None
+
+    # richer context — drift state and whether confidence is even meaningful
+    drift, cal = _signal_health_context()
+    if drift and drift.get("state") == "degrading":
+        # a degrading (not yet collapsed) champion is the ideal retrain moment:
+        # still above random, but sliding — retrain before it decays further
+        print(f"retrain trigger: signal-health drift state = degrading "
+              f"(edge {drift.get('edge')}) — favoring retrain")
+    if cal and cal.get("monotonic") is False:
+        # confidence no longer tracks accuracy — a strong sign the model has
+        # drifted out of its regime and should be refreshed
+        print("retrain trigger: calibration broken (confidence no longer "
+              "predicts accuracy) — favoring retrain")
     if champ_rate < DECAY_THRESHOLD:
         # holding when the whole roster decayed together — that is the
         # market breaking, not the model, and retraining would chase it
@@ -61,6 +88,15 @@ def retrain_signal():
         if n >= DOMINANCE_MIN_N and r >= champ_rate + DOMINANCE_MARGIN:
             return (f"shadow {m} at {r:.0%} over {n} beats champion "
                     f"{champion} at {champ_rate:.0%} by the margin")
+
+    # earlier, gentler trigger: champion still above the hard decay floor but
+    # signal_health flags BOTH drift (degrading) AND broken calibration — two
+    # independent signs of regime drift. the retrain is still challenger-gated
+    # in retrain_cnn.py, so a needless retrain simply keeps the incumbent.
+    if (drift and drift.get("state") == "degrading"
+            and cal and cal.get("monotonic") is False):
+        return (f"champion {champion} degrading (edge {drift.get('edge')}) "
+                f"with broken calibration — early regime-drift retrain")
     return None
 
 
