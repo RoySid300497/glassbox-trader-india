@@ -166,6 +166,19 @@ def maybe_enter(ticker):
 
     equity = float(get_account()["equity"])
     risk = equity * RISK_PER_TRADE
+    # performance-based risk scaling: when signal-1 (the model layer) is drifting
+    # toward random or the models disagree on this ticker, shrink risk. never
+    # amplifies (multiplier <= 1.0); toggle with SIGNAL_DERISK=0 to A/B test.
+    if os.environ.get("SIGNAL_DERISK", "1") == "1":
+        try:
+            from engine.signal_health import signal_risk_multiplier
+            _mult, _detail = signal_risk_multiplier(ticker)
+            if _mult < 1.0:
+                risk *= _mult
+                print(f"  [signal-health] {ticker}: risk x{_mult} "
+                      f"({_detail.get('drift', {}).get('state', '?')})")
+        except Exception as _e:
+            print(f"  [signal-health] unavailable: {_e}")
     per_share_risk = levels["entry"] - levels["stop"]
     qty = math.floor(risk / per_share_risk)
     max_qty = math.floor(equity * MAX_POSITION_FRACTION / levels["entry"])
@@ -390,3 +403,4 @@ def is_trading_day():
 
     # last resort — weekday already passed above; assume open
     return True
+
