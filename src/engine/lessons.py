@@ -1,7 +1,7 @@
 """distilling systematic patterns from scored mistakes into reusable lessons"""
 
 import json
-from engine.llm_clients import ask, parse_json_reply
+from engine.llm_clients import ask_any
 from engine.memory import get_client, get_active_lessons
 
 MIN_MISTAKES = 5          # requiring enough errors before seeking patterns
@@ -70,9 +70,12 @@ def distill_lessons():
               + json.dumps(existing)[:800] + "\n\nMISTAKES:\n"
               + json.dumps(cases, default=str)[:6000])
 
-    reply = parse_json_reply(ask("gemini", prompt), LESSON_SCHEMA)
+    # asking any healthy provider (gemini preferred) with automatic
+    # cross-provider fallback, so one provider's outage no longer kills the
+    # weekly lessons distillation
+    reply = ask_any(prompt, preferred="gemini", required_keys=LESSON_SCHEMA)
     if not reply or not isinstance(reply.get("lessons"), list):
-        print("lessons: no valid reply from distiller")
+        print("lessons: no valid reply from any distiller")
         return
 
     stored = 0

@@ -266,16 +266,34 @@ def ask_gemini(prompt):
     model = resolve_model("gemini")
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{model}:generateContent?key={key}")
-    r = requests.post(url,
-                      json={"contents": [{"parts": [{"text": prompt}]}],
-                            "generationConfig": {
-                                "maxOutputTokens": MAX_TOKENS,
-                                "temperature": 0.4,
-                                "thinkingConfig": {"thinkingBudget": 0}}},
+    gen_cfg = {"maxOutputTokens": MAX_TOKENS, "temperature": 0.4}
+    # thinkingConfig is only valid on 2.5+ thinking models, and some model
+    # aliases reject thinkingBudget:0 with a 400 INVALID_ARGUMENT. only send
+    # it when enabled, and retry cleanly without it if the model rejects it.
+    if os.environ.get("GEMINI_DISABLE_THINKING", "1") == "1":
+        gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+    contents = [{"parts": [{"text": prompt}]}]
+    r = requests.post(url, json={"contents": contents,
+                                 "generationConfig": gen_cfg},
                       timeout=TIMEOUT)
+    if r.status_code == 400 and "thinking" in r.text.lower():
+        gen_cfg.pop("thinkingConfig", None)
+        r = requests.post(url, json={"contents": contents,
+                                     "generationConfig": gen_cfg},
+                          timeout=TIMEOUT)
     if r.status_code >= 400:
         raise RuntimeError(f"{r.status_code}: {r.text[:200]}")
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    data = r.json()
+    # guard against empty candidates (safety blocks / truncation) instead of
+    # a raw KeyError, matching the robustness of _extract_content
+    cands = data.get("candidates") or []
+    if not cands:
+        raise RuntimeError(f"gemini: no candidates ({str(data)[:150]})")
+    parts = (cands[0].get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict)).strip()
+    if not text:
+        raise RuntimeError(f"gemini: empty text ({str(data)[:150]})")
+    return text
 
 
 PROVIDERS = {
@@ -377,6 +395,51 @@ def ask(provider, prompt):
     _consecutive_failures[provider] = \
         _consecutive_failures.get(provider, 0) + 1
     _circuit_opened_at[provider] = time.time()
+    return None
+
+
+def ask_any(prompt, preferred=None, required_keys=None):
+    # asking for ONE answer with automatic cross-provider fallback — the
+    # resilience the judges have, made reusable. tries the preferred provider
+    # first (if given), then every other keyed provider in FALLBACK_ORDER,
+    # skipping ones whose circuit is open. when required_keys is given, a
+    # provider only counts as success if its reply parses to valid json with
+    # those keys — otherwise we keep trying the next provider. returns the
+    # raw text (required_keys=None) or the parsed dict (required_keys set),
+    # or None only if every provider failed.
+    order = []
+    if preferred and preferred in PROVIDERS:
+        order.append(preferred)
+    order += [p for p in FALLBACK_ORDER if p != preferred]
+    # anything keyed but somehow missing from FALLBACK_ORDER still gets a turn
+    order += [p for p in PROVIDERS
+              if p not in order
+              and os.environ.get(PROVIDER_CONFIG[p]["key_env"])]
+
+    if not order:
+        print("  [llm] ask_any: no providers with keys configured")
+        return None
+
+    for provider in order:
+        try:
+            text = ask(provider, prompt)
+        except Exception as e:
+            print(f"  [llm] ask_any: {provider} raised ({e}) — next")
+            continue
+        if not text:
+            continue                       # circuit open / exhausted / empty
+        if required_keys is None:
+            if provider != order[0]:
+                print(f"  [llm] ask_any: served by {provider}")
+            return text
+        parsed = parse_json_reply(text, required_keys)
+        if parsed:
+            if provider != order[0]:
+                print(f"  [llm] ask_any: served by {provider}")
+            parsed["provider"] = provider
+            return parsed
+        print(f"  [llm] ask_any: {provider} replied but json invalid — next")
+    print("  [llm] ask_any: all providers failed")
     return None
 
 
