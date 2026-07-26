@@ -276,7 +276,9 @@ def ask_gemini(prompt):
     r = requests.post(url, json={"contents": contents,
                                  "generationConfig": gen_cfg},
                       timeout=TIMEOUT)
-    if r.status_code == 400 and "thinking" in r.text.lower():
+    if r.status_code == 400 and "thinkingConfig" in gen_cfg:
+        # gemini's 400 is generic and never names the offending field, so on
+        # any 400 where we sent thinkingConfig, strip it and retry once
         gen_cfg.pop("thinkingConfig", None)
         r = requests.post(url, json={"contents": contents,
                                      "generationConfig": gen_cfg},
