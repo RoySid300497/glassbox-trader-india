@@ -72,16 +72,24 @@ def _reward_risk(ticker, decision):
 
 def _max_daily_trades():
     # flexible daily trade cap: scales with how many stocks we actually debate
-    # (DEBATE_BUDGET) so it never silently blocks good signals on high-budget
-    # days, with a floor of 3 and a hard env override. ~40% of debated names
-    # may become trades — enough to act on real signals, low enough to prevent
-    # runaway over-trading.
+    # (DEBATE_BUDGET), then is TIGHTENED automatically in Neutral-dominated
+    # markets where directional trades lose (regime_cap_multiplier). a hard
+    # MAX_DAILY_TRADES env value overrides everything. floor of 3 always holds.
     import math
     override = os.environ.get("MAX_DAILY_TRADES")
     if override and override.strip():
         return int(override)
     budget = int(os.environ.get("DEBATE_BUDGET", "10"))
-    return max(3, math.ceil(0.4 * budget))
+    base = max(3, math.ceil(0.4 * budget))
+    # regime-aware tightening: in a nowhere market the multiplier shrinks the
+    # cap toward the floor; in a directional market it stays at base. reads a
+    # stable market-state measure, not recent trade P&L. fails open at 1.0.
+    try:
+        from engine.signal_health import regime_cap_multiplier
+        mult = regime_cap_multiplier()
+    except Exception:
+        mult = 1.0
+    return max(3, math.ceil(base * mult))
 
 
 def _hard_daily_ceiling():
