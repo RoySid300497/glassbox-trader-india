@@ -40,9 +40,8 @@ PROVIDER_CONFIG = {
         "key_env": "CEREBRAS_API_KEY", "model_env": "CEREBRAS_MODEL",
         "chat_url": "https://api.cerebras.ai/v1/chat/completions",
         "models_url": "https://api.cerebras.ai/v1/models",
-        "hints": ["zai-glm-4.7", "qwen-3-235b-a22b-instruct-2507",
-                  "qwen-3-32b"],
-        "fallback": "zai-glm-4.7",
+        "hints": ["gpt-oss-120b", "gemma-4-31b"],
+        "fallback": "gpt-oss-120b",
     },
     "sambanova": {
         "key_env": "SAMBANOVA_API_KEY", "model_env": "SAMBANOVA_MODEL",
@@ -56,11 +55,12 @@ PROVIDER_CONFIG = {
         "chat_url": "https://openrouter.ai/api/v1/chat/completions",
         "models_url": "https://openrouter.ai/api/v1/models",
         "require": ":free",
-        # openrouter's own free-pool router load-balances across whatever
-        # free capacity is live, dodging single-model upstream congestion
-        "hints": ["qwen/qwen3-235b-a22b:free",
-                  "meta-llama/llama-4-maverick:free",
-                  "meta-llama/llama-4-scout:free"],
+        # openrouter free models churn — these are current $0/$0 general
+        # reasoning models (verified live). nemotron-super is finance-ranked;
+        # gpt-oss and gemma support structured/JSON output for the vote schema.
+        "hints": ["nvidia/nemotron-3-super-120b-a12b:free",
+                  "openai/gpt-oss-20b:free",
+                  "google/gemma-4-26b-a4b-it:free"],
         "fallback": "openrouter/auto",
         "prefer_router": "openrouter/auto",
         "min_size": 30,
