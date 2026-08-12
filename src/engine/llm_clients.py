@@ -84,6 +84,21 @@ PROVIDER_CONFIG = {
         "hints": ["openai/gpt-4.1-mini", "openai/gpt-4o-mini"],
         "fallback": "openai/gpt-4.1-mini",
     },
+    "cloudflare": {
+        # cloudflare workers ai — OpenAI-compatible, 10k neurons/day free.
+        # the chat/models URLs embed the account id, so they are built at
+        # runtime in _cf_url() from CLOUDFLARE_ACCOUNT_ID rather than hardcoded.
+        # ONLY native @cf/ open models are free; never pin a proxied frontier
+        # model (those bill at provider rates). small model to conserve the
+        # shared daily neuron pool across many runs.
+        "key_env": "CLOUDFLARE_API_KEY", "model_env": "CLOUDFLARE_MODEL",
+        "chat_url": "__cloudflare__",   # sentinel; real URL built in _openai_style
+        "models_url": "__cloudflare__",
+        "hints": ["@cf/meta/llama-3.1-8b-instruct",
+                  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                  "@cf/qwen/qwen2.5-coder-32b-instruct"],
+        "fallback": "@cf/meta/llama-3.1-8b-instruct",
+    },
 }
 
 BENCH_PROVIDERS = ["cerebras", "sambanova", "github_models",
@@ -130,6 +145,10 @@ def _catalog_ids(provider):
     # asking the provider which model ids this key can actually use
     cfg = PROVIDER_CONFIG[provider]
     key = os.environ.get(cfg["key_env"])
+    if provider == "cloudflare":
+        # cloudflare model list is account-scoped and large; skip discovery
+        # and let resolve_model fall through to the pinned hint/fallback
+        return []
     if provider == "gemini":
         r = requests.get(f"{cfg['models_url']}?key={key}", timeout=20)
         if r.status_code >= 400:
@@ -204,14 +223,23 @@ def resolve_model(provider):
     return pick
 
 
+def _cf_base():
+    # cloudflare's endpoints embed the account id; build them at call time
+    acct = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    return f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/v1"
+
+
 def _openai_style(provider, prompt):
     # calling any openai-compatible endpoint with shared plumbing
     cfg = PROVIDER_CONFIG[provider]
+    chat_url = cfg["chat_url"]
+    if chat_url == "__cloudflare__":
+        chat_url = _cf_base() + "/chat/completions"
     payload = {"model": resolve_model(provider),
                "messages": [{"role": "user", "content": prompt}],
                "max_tokens": MAX_TOKENS, "temperature": 0.4}
     payload.update(cfg.get("extra_json", {}))
-    r = requests.post(cfg["chat_url"],
+    r = requests.post(chat_url,
                       headers={"Authorization":
                                f"Bearer {os.environ.get(cfg['key_env'])}"},
                       json=payload,
@@ -307,6 +335,7 @@ PROVIDERS = {
     "cerebras": lambda p: _openai_style("cerebras", p),
     "sambanova": lambda p: _openai_style("sambanova", p),
     "github_models": lambda p: _openai_style("github_models", p),
+    "cloudflare": lambda p: _openai_style("cloudflare", p),
 }
 
 # bench providers only join rotation when their key is present
@@ -316,7 +345,7 @@ BENCH = [p for p in BENCH_PROVIDERS
 # explicit substitution priority: deepest free quotas first, gemini last;
 # override with a FALLBACK_ORDER repo variable (comma-separated)
 DEFAULT_FALLBACK_ORDER = ["cerebras", "groq", "mistral", "nvidia",
-                          "github_models", "openrouter", "sambanova",
+                          "cloudflare", "openrouter", "sambanova",
                           "gemini"]
 
 

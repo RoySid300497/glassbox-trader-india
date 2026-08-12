@@ -309,6 +309,7 @@ def run_manage():
 def latest_prices(tickers):
     # fetching latest closes and returns for scoring and thesis review
     import yfinance as yf
+    import pandas as pd
     from engine.yf_session import yf_download
     out = {}
     for t in tickers:
@@ -513,8 +514,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
