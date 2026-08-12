@@ -107,7 +107,10 @@ BENCH_PROVIDERS = ["cerebras", "sambanova", "github_models",
 # models that are not general chat judges get filtered before ranking
 _EXCLUDE = ("embed", "whisper", "tts", "audio", "image", "vision", "ocr",
             "guard", "moderation", "rerank", "code", "coder", "transcrib",
-            "realtime", "live", "safety", "classifier")
+            "realtime", "live", "safety", "classifier",
+            # thinking-only models emit reasoning traces that break strict
+            # JSON vote parsing; omni/vl are multimodal-first, not chat-first
+            "thinking", "-omni", "-vl-", "reasoning")
 
 
 def _model_size(model_id):
@@ -141,6 +144,42 @@ def _rank_score(model_id):
     return score
 
 
+_CATALOG_TTL = int(os.environ.get("MODEL_CATALOG_TTL_HOURS", "12")) * 3600
+
+
+def _catalog_cache_path(provider):
+    import tempfile
+    return os.path.join(tempfile.gettempdir(),
+                        f"llm_catalog_{provider}.json")
+
+
+def _read_catalog_cache(provider):
+    # returning a recently-cached live catalog, or None if stale/absent
+    import json
+    import time
+    try:
+        p = _catalog_cache_path(provider)
+        if not os.path.exists(p):
+            return None
+        with open(p) as f:
+            blob = json.load(f)
+        if time.time() - blob.get("ts", 0) > _CATALOG_TTL:
+            return None
+        return blob.get("ids") or None
+    except Exception:
+        return None
+
+
+def _write_catalog_cache(provider, ids):
+    import json
+    import time
+    try:
+        with open(_catalog_cache_path(provider), "w") as f:
+            json.dump({"ts": time.time(), "ids": ids}, f)
+    except Exception:
+        pass
+
+
 def _catalog_ids(provider):
     # asking the provider which model ids this key can actually use
     cfg = PROVIDER_CONFIG[provider]
@@ -158,6 +197,7 @@ def _catalog_ids(provider):
             if "generateContent" in (m.get("supportedGenerationMethods")
                                      or []):
                 out.append(m.get("name", "").removeprefix("models/"))
+        _write_catalog_cache(provider, out)
         return out
     r = requests.get(cfg["models_url"],
                      headers={"Authorization": f"Bearer {key}"}, timeout=20)
@@ -165,7 +205,9 @@ def _catalog_ids(provider):
         raise RuntimeError(f"{r.status_code}: {r.text[:120]}")
     body = r.json()
     items = body.get("data", body) if isinstance(body, dict) else body
-    return [m.get("id") for m in items if isinstance(m, dict) and m.get("id")]
+    ids = [m.get("id") for m in items if isinstance(m, dict) and m.get("id")]
+    _write_catalog_cache(provider, ids)
+    return ids
 
 
 _resolved_models = {}
@@ -182,7 +224,14 @@ def resolve_model(provider):
     try:
         available = _catalog_ids(provider)
     except Exception as e:
-        print(f"  [llm] {provider} model discovery failed ({e})")
+        # discovery failed — reuse the last good catalog so a transient
+        # outage doesn't drop us onto stale static hints
+        available = _read_catalog_cache(provider)
+        if available:
+            print(f"  [llm] {provider} discovery failed ({e}); "
+                  f"using cached catalog ({len(available)} models)")
+        else:
+            print(f"  [llm] {provider} model discovery failed ({e})")
 
     pick = None
     router = cfg.get("prefer_router")
