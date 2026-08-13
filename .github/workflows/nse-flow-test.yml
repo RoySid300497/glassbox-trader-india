@@ -1,0 +1,32 @@
+name: nse-flow-test
+
+# one-off / manual test: can a GitHub-hosted runner actually reach NSE?
+# NSE blocks many datacenter IPs, so this tells us whether the flow fetcher
+# can live in Actions or needs an aggregator. --no-store means it only fetches
+# and prints counts; it writes nothing to Supabase.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install minimal deps
+        run: pip install requests pandas
+
+      - name: test NSE access from the runner (fetch-only, no DB writes)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: python -m engine.nse_flow --days 3 --no-store
