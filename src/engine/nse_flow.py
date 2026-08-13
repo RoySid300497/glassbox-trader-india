@@ -86,28 +86,43 @@ def fetch_participant_oi(day):
 
 
 def fetch_bulk_deals():
-    # the rolling bulk-deals CSV (recent window); per-ticker institutional
-    # prints with buy/sell side, quantity, and price
+    # the rolling bulk-deals CSV; AGGREGATED to institutional pressure per
+    # (date, symbol, side) — summing quantity and quantity-weighting price.
+    # a single client often splits one large order into several prints, so
+    # aggregating both avoids PK collisions and gives the total pressure a
+    # feature actually wants (net buy/sell interest per stock per day).
     import pandas as pd
     r = _get(BULK_DEALS_URL)
     df = pd.read_csv(io.StringIO(r.text))
     df.columns = [c.strip() for c in df.columns]
-    rows = []
+    agg = {}   # (date, symbol, side) -> [total_qty, qty*price_sum]
     for _, row in df.iterrows():
         try:
             d = pd.to_datetime(str(row.get("Date", "")).strip(),
                                dayfirst=True).date()
         except Exception:
             continue
+        sym = str(row.get("Symbol", "")).strip()
+        side = str(row.get("Buy/Sell", "")).strip().upper()[:4]
+        if not sym or not side:
+            continue
+        qty = int(float(str(row.get("Quantity Traded", 0))
+                        .replace(",", "") or 0))
+        price = float(str(row.get("Trade Price / Wght. Avg. Price", 0))
+                      .replace(",", "") or 0)
+        k = (str(d), sym, side)
+        if k not in agg:
+            agg[k] = [0, 0.0, 0]   # total_qty, qty*price, deal_count
+        agg[k][0] += qty
+        agg[k][1] += qty * price
+        agg[k][2] += 1
+    rows = []
+    for (d, sym, side), (tot_qty, qp, n) in agg.items():
         rows.append({
-            "trade_date": str(d),
-            "symbol": str(row.get("Symbol", "")).strip(),
-            "client_name": str(row.get("Client Name", "")).strip()[:200],
-            "side": str(row.get("Buy/Sell", "")).strip().upper()[:4],
-            "quantity": int(float(str(row.get("Quantity Traded", 0))
-                                  .replace(",", "") or 0)),
-            "avg_price": float(str(row.get("Trade Price / Wght. Avg. Price",
-                                           0)).replace(",", "") or 0),
+            "trade_date": d, "symbol": sym, "side": side,
+            "quantity": tot_qty,
+            "avg_price": round(qp / tot_qty, 4) if tot_qty else 0,
+            "deal_count": n,
         })
     return rows
 
@@ -143,7 +158,7 @@ def run(days_back=5, store_db=True):
         rows = fetch_bulk_deals()
         if store_db:
             ok_bulk = store("bulk_deals", rows,
-                            "trade_date,symbol,client_name,side")
+                            "trade_date,symbol,side")
         print(f"[nse_flow] bulk deals: {len(rows)} rows"
               + ("" if store_db else " (not stored)"))
     except Exception as e:
