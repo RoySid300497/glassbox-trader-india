@@ -94,7 +94,7 @@ def run_ticker(ticker, source="technical"):
     news = fetch_and_archive(ticker)
     packet = build_packet(ticker, news)
     verdict = decide(packet)
-    action, note = apply_gate(ticker, verdict)
+    action, note = apply_gate(ticker, verdict, packet=packet)
     print(f"panel: {verdict['decision']} | gate: {action} | {note}")
 
     sig = packet["cnn_signal"]

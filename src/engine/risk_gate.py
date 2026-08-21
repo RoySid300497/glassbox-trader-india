@@ -16,6 +16,14 @@ CAP_OVERRIDE_CONFIDENCE = float(
 # when judges are confident. env-tunable; set to 0 to disable.
 # the 5-day regime layer: a confident opposite 5d read blocks NEW entries
 # (open positions stay governed by the trade manager). env-tunable.
+# evidence-driven alignment gate: live data shows BUYs taken against a
+# non-supportive model signal run far below random (11/53 = 20.8%), and the
+# distilled lessons repeatedly flag exactly this pattern — buying on bullish
+# market context while the CNN says Down/Neutral. block those BUYs unless the
+# judges' winning-side conviction is exceptional.
+CNN_ALIGN_GATE = os.environ.get("CNN_ALIGN_GATE", "1") == "1"
+CNN_ALIGN_OVERRIDE = float(os.environ.get("CNN_ALIGN_OVERRIDE", "0.75"))
+
 HORIZON5D_GATE = os.environ.get("HORIZON5D_GATE", "1") == "1"
 H5_MIN_CONFIDENCE = float(os.environ.get("H5_MIN_CONFIDENCE", "0.5"))
 
@@ -137,7 +145,7 @@ def _horizon5d_latest(ticker):
         return None
 
 
-def apply_gate(ticker, verdict):
+def apply_gate(ticker, verdict, packet=None):
     # passing the panel verdict through every hard rule before it stands
     decision = verdict["decision"]
     votes = verdict["judge_votes"]
@@ -158,12 +166,34 @@ def apply_gate(ticker, verdict):
             return "NO_TRADE", (f"gate: avg judge confidence {avg_conf:.2f} "
                                 f"below {MIN_JUDGE_CONFIDENCE}")
 
+    # blocking BUYs that fight the model's own signal — the single measured
+    # failure mode (20.8% hit rate live; lessons flag it weekly). only an
+    # exceptional judge conviction overrides. SELLs are untouched (41.7%,
+    # above their base rate) — this gate cuts the measured bleeding only.
+    if decision == "BUY" and CNN_ALIGN_GATE and packet:
+        sig = (packet.get("cnn_signal") or {})
+        direction = sig.get("direction")
+        if direction in ("Down", "Neutral"):
+            conf = _winning_side_confidence(verdict)
+            if conf < CNN_ALIGN_OVERRIDE:
+                return "NO_TRADE", (f"gate: BUY against model signal "
+                                    f"{direction} (judge conf {conf:.2f} < "
+                                    f"{CNN_ALIGN_OVERRIDE}) — abstaining")
+
     # blocking NEW entries that fight a confident 5-day regime read: don't
     # buy into a confirmed downtrend or sell into a confirmed uptrend. the
     # daily verdict NO_TRADE is never affected (the regime layer only filters
     # trades, never creates them); open positions stay with the trade manager.
     if decision != "NO_TRADE" and HORIZON5D_GATE:
-        h5 = _horizon5d_latest(ticker)
+        try:
+            from engine.signal_health import horizon5d_live_ok
+            _h5ok, _ = horizon5d_live_ok()
+        except Exception:
+            _h5ok = True
+        if not _h5ok:
+            h5 = None   # live hit rate at random — the 5d read blocks nothing
+        else:
+            h5 = _horizon5d_latest(ticker)
         if h5 and h5.get("confidence", 0) >= H5_MIN_CONFIDENCE:
             if decision == "BUY" and h5["direction"] == "Down":
                 return "NO_TRADE", (f"gate: 5d regime Down "

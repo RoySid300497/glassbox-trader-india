@@ -176,6 +176,27 @@ def agreement_multiplier(ticker):
     return mult, {"agree_frac": round(frac, 2), "n": len(votes), "top": top}
 
 
+def horizon5d_live_ok(min_scored=100):
+    # the 5d layer only earns influence while its LIVE scored hit rate beats
+    # random. backtest promise is not enough — 326 live scored at 33.4% is
+    # chance, and a chance-level signal should not scale risk or block trades.
+    # returns (ok, info). fails open (ok=True) until enough live history.
+    try:
+        rows = get_client().table("model_predictions") \
+            .select("was_correct") \
+            .eq("model", "cnn1d_5d") \
+            .not_.is_("scored_at", "null") \
+            .order("pred_date", desc=True).limit(400).execute().data or []
+        if len(rows) < min_scored:
+            return True, {"scored": len(rows), "status": "immature"}
+        hit = sum(1 for r in rows if r["was_correct"]) / len(rows)
+        ok = hit > RANDOM_BASELINE + 0.03
+        return ok, {"scored": len(rows), "hit_rate": round(hit, 3),
+                    "status": "healthy" if ok else "at_random"}
+    except Exception:
+        return True, None
+
+
 def horizon5d_multiplier(ticker):
     # soft regime scaling per the verified table (hard conflicts are blocked
     # in risk_gate before sizing): low-confidence 5d -> 0.75 (no tailwind),
@@ -183,6 +204,11 @@ def horizon5d_multiplier(ticker):
     # maybe_enter only opens longs, so alignment is judged against BUY.
     try:
         from datetime import date, timedelta
+        ok, live = horizon5d_live_ok()
+        if not ok:
+            # live hit rate is at/below random — the 5d read carries no
+            # information right now, so it must not scale risk at all
+            return 1.0, {"neutralized": "live hit rate at random", **(live or {})}
         h5_conf = float(os.environ.get("H5_MIN_CONFIDENCE", "0.5"))
         cutoff = str(date.today() - timedelta(days=5))
         rows = get_client().table("model_predictions") \

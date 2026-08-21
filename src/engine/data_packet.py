@@ -316,6 +316,42 @@ def _horizon_5d_block(ticker):
         return None
 
 
+def _evidence_reliability_block():
+    # feeding the judges their own track record: which evidence concepts have
+    # actually predicted correctly over the last 4 weeks vs their baseline.
+    # this is what turns the read-only evidence report into live reweighting —
+    # judges are TOLD which signals earn trust and which have burned them.
+    try:
+        from datetime import date, timedelta
+        from engine.memory import get_client
+        cutoff = str(date.today() - timedelta(days=28))
+        rows = get_client().table("evidence_stats") \
+            .select("concept,hit_rate,baseline") \
+            .gte("week_ending", cutoff).execute().data or []
+        if not rows:
+            return None
+        agg = {}
+        for r in rows:
+            a = agg.setdefault(r["concept"], [0.0, 0.0, 0])
+            a[0] += float(r["hit_rate"] or 0)
+            a[1] += float(r["baseline"] or 0)
+            a[2] += 1
+        scored = []
+        for c, (h, b, n) in agg.items():
+            scored.append({"concept": c, "hit_rate": round(h / n, 3),
+                           "baseline": round(b / n, 3),
+                           "edge": round((h - b) / n, 3)})
+        scored.sort(key=lambda x: x["edge"], reverse=True)
+        return {"reliable": [s for s in scored if s["edge"] > 0.02][:4],
+                "unreliable": [s for s in scored if s["edge"] < -0.02][-4:],
+                "note": ("4-week live track record per evidence type. weight "
+                         "reliable concepts up and treat unreliable ones with "
+                         "heavy skepticism — especially do not let unreliable "
+                         "context override the model signal.")}
+    except Exception:
+        return None
+
+
 def build_packet(ticker, news_items):
     # combining signal, structure, news, history, lessons, thesis, and context
     from engine.news_fetcher import fetch_next_earnings
@@ -347,6 +383,7 @@ def build_packet(ticker, news_items):
         if sentiments else None,
         # one c-grade opinion among many, deliberately not the headline
         "cnn_signal": get_cnn_signal(ticker),
+        "evidence_reliability": _evidence_reliability_block(),
         "horizon_5d": _horizon_5d_block(ticker),
         "value_area": _value_area_block(ticker),
         "recent_decisions": get_recent_decisions(ticker, limit=5),
