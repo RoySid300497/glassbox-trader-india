@@ -92,7 +92,11 @@ def _judge_prompt(packet, bull, bear, bull_reb, bear_reb):
             "when the edge is moderate. Reserve NO_TRADE for cases where "
             "bullish and bearish evidence are genuinely balanced or both "
             "sides are unsupported \u2014 not merely because conviction is "
-            "less than certain.\n" + GROUNDING +
+            "less than certain. If the packet contains an "
+            "evidence_weights block, scale your trust in each claim by its "
+            "concept's numeric weight, and never let a concept listed under "
+            "persistently_failing carry a directional vote on its own.\n"
+            + GROUNDING +
             '\njson schema: {"vote": "BUY"|"SELL"|"NO_TRADE", '
             '"reason": str, "confidence": float 0-1}\n\nBULL CASES:\n'
             + json.dumps(bull, default=str)[:1200] + "\nBEAR CASES:\n"

@@ -475,6 +475,11 @@ def weekly_review():
         evidence_report()
     except Exception as e:
         print(f"evidence report failed: {e}")
+    try:
+        from engine.adaptive_evidence import weekly_update
+        weekly_update()
+    except Exception as e:
+        print(f"adaptive evidence update failed: {e}")
     write_weekly_report()
     if enabled():
         from engine.performance import sync_performance

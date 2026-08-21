@@ -204,6 +204,21 @@ def apply_gate(ticker, verdict, packet=None):
                                     f"({h5['confidence']:.2f}) conflicts "
                                     f"with SELL — abstaining")
 
+    # adaptive evidence gate: winning cases leaning on persistently-failing
+    # concepts (armed via hysteresis) with no reliable support. ALWAYS logs
+    # the shadow record; only blocks once governance has promoted the gate
+    # to live on proven separation — and it auto-reverts if that fades.
+    if decision != "NO_TRADE":
+        try:
+            from engine.adaptive_evidence import evaluate_decision
+            blocked, ev_note = evaluate_decision(
+                ticker, verdict, decision,
+                _winning_side_confidence(decision, votes))
+            if blocked:
+                return "NO_TRADE", ev_note
+        except Exception as e:
+            print(f"  [adaptive] gate unavailable ({e}) — failing open")
+
     # blocking trades whose reward does not justify the risk (asymmetry rule)
     if decision != "NO_TRADE" and MIN_REWARD_RISK > 0:
         rr, rr_note = _reward_risk(ticker, decision)

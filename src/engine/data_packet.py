@@ -316,6 +316,17 @@ def _horizon_5d_block(ticker):
         return None
 
 
+def _adaptive_guidance_block():
+    # numeric per-concept weights + persistently-failing list from the
+    # adaptive layer's own multi-week scored record. tolerant of any failure.
+    try:
+        from engine.adaptive_evidence import judge_guidance_block
+        return judge_guidance_block()
+    except Exception as e:
+        print(f"  [packet] adaptive guidance failed: {e}")
+        return None
+
+
 def _evidence_reliability_block():
     # feeding the judges their own track record: which evidence concepts have
     # actually predicted correctly over the last 4 weeks vs their baseline.
@@ -372,7 +383,7 @@ def build_packet(ticker, news_items):
             _gap is not None and abs(_gap) >= 1.5 and not _has_catalyst),
         "delivery_pct": _delivery_block(ticker),
         "india_market_context": _india_context_block(),
-        "evidence_reliability": _reliability_block(),
+        "evidence_grades": _reliability_block(),
         "macro_news": _macro_block(),
         "days_to_earnings": fetch_next_earnings(ticker),
         "news": [{"headline": n["headline"][:200],
@@ -384,6 +395,7 @@ def build_packet(ticker, news_items):
         # one c-grade opinion among many, deliberately not the headline
         "cnn_signal": get_cnn_signal(ticker),
         "evidence_reliability": _evidence_reliability_block(),
+        "evidence_weights": _adaptive_guidance_block(),
         "horizon_5d": _horizon_5d_block(ticker),
         "value_area": _value_area_block(ticker),
         "recent_decisions": get_recent_decisions(ticker, limit=5),
