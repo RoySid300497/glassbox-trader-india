@@ -1013,3 +1013,102 @@ architecture           head granularity split  macro_f1
   [plot saved] s4_pooled_sequence_macro_f1.png
   [plot saved] s4_granularity_comparison.png
 stage 4 complete
+
+======================================================================
+HORIZON SWEEP — WHERE DOES THE MARKET LEAK PREDICTABLE SIGNAL?
+======================================================================
+downloading 25 tickers from yfinance (2023-03-25 to 2026-07-22)...
+downloaded 19,676 rows across 24 tickers
+rebuilding features on out-of-sample data...
+rows: 18,476 | features: 44
+--- horizon 1d (threshold ±1.000%) ---
+  1d: holdout macro-F1 0.4932 | stratified 0.3323 | majority 0.1974 | EDGE +0.1609 on 692
+--- horizon 2d (threshold ±1.414%) ---
+  2d: holdout macro-F1 0.5866 | stratified 0.3339 | majority 0.1909 | EDGE +0.2527 on 668
+--- horizon 3d (threshold ±1.732%) ---
+  3d: holdout macro-F1 0.5735 | stratified 0.3322 | majority 0.1843 | EDGE +0.2413 on 644
+--- horizon 4d (threshold ±2.000%) ---
+  4d: holdout macro-F1 0.5921 | stratified 0.3324 | majority 0.1905 | EDGE +0.2597 on 620
+--- horizon 5d (threshold ±2.236%) ---
+  5d: holdout macro-F1 0.5989 | stratified 0.3330 | majority 0.1862 | EDGE +0.2659 on 596
+--- horizon 6d (threshold ±2.449%) ---
+  6d: holdout macro-F1 0.5582 | stratified 0.3329 | majority 0.1976 | EDGE +0.2253 on 572
+--- horizon 7d (threshold ±2.646%) ---
+  7d: holdout macro-F1 0.5774 | stratified 0.3318 | majority 0.1947 | EDGE +0.2456 on 548
+
+======================================================================
+SWEEP SUMMARY (judge by EDGE, not raw F1)
+======================================================================
+ horizon  macro-F1  baseline     EDGE        n
+      1d    0.4932    0.3323  +0.1609      692
+      2d    0.5866    0.3339  +0.2527      668
+      3d    0.5735    0.3322  +0.2413      644
+      4d    0.5921    0.3324  +0.2597      620
+      5d    0.5989    0.3330  +0.2659      596
+      6d    0.5582    0.3329  +0.2253      572
+      7d    0.5774    0.3318  +0.2456      548
+
+best horizon by edge: 5d (+0.2659)
+VERDICT: 5d beats daily by +0.1050 — meaningful extra signal; building the 5d regime layer is justified
+
+======================================================================
+TRAINING THE 5-DAY REGIME MODEL (challenger-gated)
+======================================================================
+downloading 50 tickers from yfinance (2021-03-25 to 2026-07-22)...
+downloaded 63,203 rows across 48 tickers
+rebuilding features on out-of-sample data...
+rows: 60,803 | features: 44 | 5d threshold ±2.236%
+training cnn1d on 47,520 sequences (5d label)...
+challenger: val 0.4817 | eval 0.4968
+[GATE] no existing 5d model — challenger deploys by default
+5d regime model deployed (seq_model_5d.pt)
+
+======================================================================
+FEATURE ABLATION — DOES THE CANDIDATE ADD EDGE?
+======================================================================
+
+======================================================================
+FEATURE ABLATION — DOES THE CANDIDATE ADD EDGE?
+======================================================================
+candidate features: ['fii_net_idx_fut', 'fii_net_idx_opt'] (market-wide)
+downloading 25 tickers from yfinance (2023-04-16 to 2026-08-13)...
+downloaded 19,792 rows across 24 tickers
+rebuilding features on out-of-sample data...
+rows: 18,592 | candidate coverage after ffill: 100%
+--- baseline (existing features only) ---
+  macro-F1 0.5205 | stratified 0.3335 | EDGE +0.1870
+--- baseline + candidate ---
+  macro-F1 0.4982 | stratified 0.3335 | EDGE +0.1648
+
+======================================================================
+VERDICT
+======================================================================
+edge delta from candidate: -0.0223
+VERDICT: no added edge — do NOT adopt; the honest answer is this data is already priced in or redundant
+
+======================================================================
+FEATURE ABLATION — DOES THE CANDIDATE ADD EDGE?
+======================================================================
+candidate features: ['bulk_net_qty', 'bulk_deal_count'] (per-ticker)
+downloading 25 tickers from yfinance (2023-04-16 to 2026-08-13)...
+downloaded 19,791 rows across 24 tickers
+rebuilding features on out-of-sample data...
+rows: 18,591 | candidate coverage after ffill: 0%
+WARNING: candidate covers <50% of the frame — the test will mostly measure fill values, not the feature. collect more history before trusting this result.
+--- baseline (existing features only) ---
+  macro-F1 0.5602 | stratified 0.3314 | EDGE +0.2288
+--- baseline + candidate ---
+  macro-F1 0.1366 | stratified 0.3314 | EDGE -0.1949
+
+======================================================================
+VERDICT
+======================================================================
+edge delta from candidate: -0.4236
+VERDICT: no added edge — do NOT adopt; the honest answer is this data is already priced in or redundant
+downloading 5 tickers from yfinance (2024-06-01 to 2026-12-31)...
+downloaded 2,743 rows across 5 tickers
+rebuilding features on out-of-sample data...
+downloading 60 tickers from yfinance (2025-12-24 to 2026-08-22)...
+downloaded 9,896 rows across 60 tickers
+rebuilding features on out-of-sample data...
+screener[rf]: scanned 60 tickers

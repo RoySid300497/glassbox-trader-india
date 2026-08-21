@@ -12,3 +12,6 @@ logs/
 .env
 .env.*
 web/.env.local
+.codereach/
+bulk.csv
+flow.csv
