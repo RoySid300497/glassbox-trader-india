@@ -18,7 +18,7 @@ EXCHANGE_SUFFIX = ".NS"          # yfinance National Stock Exchange suffix
 TIMEZONE = "Asia/Kolkata"
 CURRENCY = "INR"
 YF_HISTORY_YEARS = 12            # pull enough for a decade of usable rows
-UNIVERSE_NAME = "NIFTY50"
+UNIVERSE_NAME = os.environ.get("UNIVERSE_INDEX", "nifty200").upper()
 
 # kaggle is unused on NSE (yfinance replaces it) but kept so any leftover
 # import does not break
