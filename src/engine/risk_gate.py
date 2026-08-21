@@ -174,7 +174,7 @@ def apply_gate(ticker, verdict, packet=None):
         sig = (packet.get("cnn_signal") or {})
         direction = sig.get("direction")
         if direction in ("Down", "Neutral"):
-            conf = _winning_side_confidence(verdict)
+            conf = _winning_side_confidence(decision, verdict["judge_votes"])
             if conf < CNN_ALIGN_OVERRIDE:
                 return "NO_TRADE", (f"gate: BUY against model signal "
                                     f"{direction} (judge conf {conf:.2f} < "
