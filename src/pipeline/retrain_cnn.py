@@ -97,6 +97,7 @@ def retrain(limit=None):
         f"{[round(w, 2) for w in class_weights]}")
 
     roster_results = {}
+    live_rf_eval = None      # deployed rf's macro-f1 on the eval window
     shadow_dir = os.path.join(MODEL_PATH, "shadow")
     for kind in ROSTER:
         log(f"training {kind} on {len(Xtr):,} sequences...")
@@ -165,7 +166,11 @@ def retrain(limit=None):
         from sklearn.metrics import f1_score
         le = LabelEncoder().fit(["Down", "Neutral", "Up"])
         imputer = SimpleImputer(strategy="median").fit(train[feature_cols])
-        rf_new = RandomForestClassifier(n_estimators=180, max_depth=16,
+        # trees/depth tuned so the pickle stays under the repo size guard on
+        # the full 200-name universe (180x16 produced a 116MB file that was
+        # rejected, leaving a STALE rf deployed). the rf is the weak fallback
+        # model anyway, so the small capacity trim costs almost no f1.
+        rf_new = RandomForestClassifier(n_estimators=120, max_depth=12,
                                         min_samples_leaf=5, n_jobs=-1,
                                         class_weight="balanced_subsample",
                                         random_state=42)
@@ -190,6 +195,7 @@ def retrain(limit=None):
                 old_rf["label_encoder"].transform(frame["true_label"]),
                 old_rf["model"].predict(Xo), average="macro")
             log(f"  random_forest incumbent : eval {old_f1:.4f}")
+            live_rf_eval = old_f1
 
         if old_f1 is None or rf_f1 > old_f1:
             import tempfile
@@ -281,6 +287,37 @@ def retrain(limit=None):
     with open(os.path.join(MODEL_PATH, "seq_scaler.pkl"), "wb") as f:
         pickle.dump(deploy_scaler, f)
     log(f"challenger deployed ({best_kind}) — standard artifacts replaced")
+
+    # conservative champion seeding: the election normally crowns the live
+    # model on >=20 scored predictions, so a freshly deployed seq model can
+    # sit unused for weeks while a demonstrably weaker random_forest keeps
+    # trading. when (a) the live champion is random_forest and (b) this
+    # challenger beat that live rf decisively on the held-out window, point
+    # the champion at it now. the election still arbitrates from here on
+    # live data; this only removes the cold-start lag, and only ever fires
+    # to replace the weakest electable model, never a proven seq one.
+    try:
+        from engine.champion import get_champion, set_champion
+        SEED_MARGIN = 0.05      # clear win over the model actually being traded
+        live = get_champion()
+        # compare the challenger against the model it would REPLACE: the live
+        # random_forest, scored on the same eval window (live_rf_eval). the
+        # seq-champion comparison used by the gate is the wrong yardstick for
+        # seeding — the crown is on the rf, not the seq slot.
+        if live == "random_forest" and live_rf_eval is not None \
+                and chal_f1 >= live_rf_eval + SEED_MARGIN:
+            set_champion(best_kind)
+            log(f"[SEED] champion random_forest -> {best_kind} "
+                f"(challenger {chal_f1:.4f} vs live rf {live_rf_eval:.4f}, "
+                f"margin >= {SEED_MARGIN}); election arbitrates from here")
+        elif live == "random_forest" and live_rf_eval is None:
+            log("[SEED] champion unchanged — live rf eval unavailable this "
+                "run; election decides on scored predictions")
+        else:
+            log(f"[SEED] champion unchanged (live={live}); election decides "
+                f"promotion on scored predictions")
+    except Exception as e:
+        log(f"[SEED] champion seeding skipped ({e})")
 
 
 def main():
