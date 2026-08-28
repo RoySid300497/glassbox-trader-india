@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 stock-lens-data/data/*.csv
 !stock-lens-data/data/securities.csv
+!stock-lens-data/data/universe.csv
 .env
 .DS_Store
 __pycache__/
