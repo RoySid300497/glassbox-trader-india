@@ -35,6 +35,12 @@ jobs:
       - name: install remaining dependencies
         run: pip install -r requirements.txt
 
+      - name: refresh universe to current nifty 200 (never train stale)
+        env:
+          STOCK_LENS_BASE: ${{ github.workspace }}/stock-lens-data
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: python scripts/build_universe.py
+
       - name: retrain behind the challenger gate
         env:
           STOCK_LENS_BASE: ${{ github.workspace }}/stock-lens-data
