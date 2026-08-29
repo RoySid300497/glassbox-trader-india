@@ -1,0 +1,57 @@
+name: provider-probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install deps
+        run: pip install -r requirements.txt
+      - name: probe every provider (presence + a live call)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GH_MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python3 - <<'PY'
+          import os
+          # 1) presence only — never prints the value
+          key_env = {
+              "gemini":"GEMINI_API_KEY","groq":"GROQ_API_KEY",
+              "mistral":"MISTRAL_API_KEY","cerebras":"CEREBRAS_API_KEY",
+              "nvidia":"NVIDIA_API_KEY","github_models":"GH_MODELS_TOKEN",
+              "openrouter":"OPENROUTER_API_KEY","sambanova":"SAMBANOVA_API_KEY",
+              "cloudflare":"CLOUDFLARE_API_KEY",
+          }
+          print("=== secret presence in this runner ===")
+          for p, e in key_env.items():
+              v = os.environ.get(e) or ""
+              print(f"  {p:14s} {e:22s} {'SET ('+str(len(v))+' chars)' if v else 'MISSING/empty'}")
+          # 2) live call per provider so we see which keys actually WORK
+          print("\n=== live call per provider ===")
+          try:
+              from engine.llm_clients import ask, PROVIDERS
+              for p in PROVIDERS:
+                  try:
+                      r = ask(p, "Reply with the single word OK.")
+                      print(f"  {p:14s} -> {'OK' if r else 'EMPTY'}: {repr((r or '')[:30])}")
+                  except Exception as e:
+                      print(f"  {p:14s} -> ERROR: {type(e).__name__}: {str(e)[:100]}")
+          except Exception as e:
+              print("could not import llm_clients:", e)
+          PY
