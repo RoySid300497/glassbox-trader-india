@@ -94,10 +94,16 @@ PROVIDER_CONFIG = {
         "key_env": "CLOUDFLARE_API_KEY", "model_env": "CLOUDFLARE_MODEL",
         "chat_url": "__cloudflare__",   # sentinel; real URL built in _openai_style
         "models_url": "__cloudflare__",
-        "hints": ["@cf/meta/llama-3.1-8b-instruct",
-                  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-                  "@cf/qwen/qwen2.5-coder-32b-instruct"],
-        "fallback": "@cf/meta/llama-3.1-8b-instruct",
+        # NOTE: the plain llama-3.1/3.3 ids were DEPRECATED (410) in 2026 and
+        # killed this provider. these are current non-deprecated ids from the
+        # aug-2026 catalog; _catalog_ids returns this same list so resolve_model
+        # matches the first, and normal per-run resolution moves on if it 410s.
+        "hints": ["@cf/meta/llama-3.1-8b-instruct-fast",
+                  "@cf/meta/llama-3.1-8b-instruct-fp8",
+                  "@cf/mistralai/mistral-small-3.1-24b-instruct",
+                  "@cf/meta/llama-4-scout-17b-16e-instruct",
+                  "@cf/openai/gpt-oss-20b"],
+        "fallback": "@cf/meta/llama-3.1-8b-instruct-fast",
     },
 }
 
@@ -185,9 +191,13 @@ def _catalog_ids(provider):
     cfg = PROVIDER_CONFIG[provider]
     key = os.environ.get(cfg["key_env"])
     if provider == "cloudflare":
-        # cloudflare model list is account-scoped and large; skip discovery
-        # and let resolve_model fall through to the pinned hint/fallback
-        return []
+        # cloudflare's live model list is account-scoped, large, and mixes in
+        # image/audio/embedding ids; rather than fetch and filter all of it,
+        # treat our curated non-deprecated hint list AS the catalog. this
+        # makes resolve_model match the first available hint and, crucially,
+        # gives it more than one option so a single deprecation (the 410 that
+        # killed this provider before) degrades to the next model, not death.
+        return list(cfg["hints"])
     if provider == "gemini":
         r = requests.get(f"{cfg['models_url']}?key={key}", timeout=20)
         if r.status_code >= 400:
@@ -402,12 +412,19 @@ def _fallback_order():
     raw = os.environ.get("FALLBACK_ORDER")
     order = ([p.strip() for p in raw.split(",") if p.strip()]
              if raw else DEFAULT_FALLBACK_ORDER)
-    known = [p for p in order if p in PROVIDER_CONFIG]
+    # same disabled set as the panel pool: keep structurally-dead providers
+    # (retired / payment-required / deprecated-model) out of the fallback
+    # chain so ask_any never burns retries on them. env-overridable.
+    disabled = {x.strip() for x in
+                os.environ.get("DISABLED_PROVIDERS",
+                               "github_models,cerebras").split(",")
+                if x.strip()}
+    known = [p for p in order if p in PROVIDER_CONFIG and p not in disabled]
     keyed = [p for p in known
              if os.environ.get(PROVIDER_CONFIG[p]["key_env"])]
     # anything keyed but unlisted still belongs at the back of the line
     keyed += [p for p in PROVIDER_CONFIG
-              if p not in keyed
+              if p not in keyed and p not in disabled
               and os.environ.get(PROVIDER_CONFIG[p]["key_env"])]
     return keyed
 

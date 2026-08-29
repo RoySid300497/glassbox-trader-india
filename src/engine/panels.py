@@ -35,10 +35,21 @@ def _keyed_providers():
         "mistral": "MISTRAL_API_KEY", "cerebras": "CEREBRAS_API_KEY",
         "nvidia": "NVIDIA_API_KEY", "github_models": "GH_MODELS_TOKEN",
         "openrouter": "OPENROUTER_API_KEY", "sambanova": "SAMBANOVA_API_KEY",
+        "cloudflare": "CLOUDFLARE_API_KEY",
     }
     ordered = ["gemini", "groq", "mistral", "cerebras", "nvidia",
-               "github_models", "openrouter", "sambanova"]
-    keyed = [p for p in ordered if _os.environ.get(key_env[p])]
+               "github_models", "openrouter", "sambanova", "cloudflare"]
+    # excluding providers that are keyed but structurally dead, so the
+    # rotation never wastes a seat on a corpse. github_models is retired
+    # (410 brownout), cerebras now requires payment (402), cloudflare's
+    # pinned model is deprecated (410). override with DISABLED_PROVIDERS
+    # (comma-separated) to re-enable if a service returns or billing is added.
+    _disabled = {x.strip() for x in
+                 _os.environ.get("DISABLED_PROVIDERS",
+                                 "github_models,cerebras").split(",")
+                 if x.strip()}
+    keyed = [p for p in ordered
+             if _os.environ.get(key_env[p]) and p not in _disabled]
     return keyed or ["gemini", "groq", "mistral"]
 
 ALL_PROVIDERS = _keyed_providers()
