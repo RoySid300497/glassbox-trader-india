@@ -12,10 +12,6 @@ MIN_MEASURED = 10            # citations needed before data replaces prior
 # prior grades: A = well-documented effects, B = reasonable evidence,
 # C = computable trader lore awaiting proof, D = weak or self-referential
 PRIOR_GRADES = {
-    "insider_activity": ("A", "clustered open-market insider buying is one "
-                              "of the best-documented bullish signals"),
-    "congress_trading": ("B", "congressional disclosures are delayed but "
-                              "show documented anomalous returns"),
     "connors_rsi2": ("A", "published mean-reversion system with decades of "
                           "replicated backtests"),
     "market_stage": ("B", "trend and regime persistence are established "
@@ -45,7 +41,6 @@ PRIOR_GRADES = {
     "divergence": ("C", "momentum divergence has mixed formal evidence"),
     "vix_fix_capitulation": ("C", "volatility climaxes often mark bottoms "
                                   "but timing is imprecise"),
-    "volume": ("C", "volume confirms trends but rarely predicts alone"),
     "liquidity_sweep": ("C", "trader-taught concept, mechanically detected, "
                              "unproven on daily bars"),
     "fvg_order_block": ("C", "trader-taught zone concept awaiting scored "

@@ -191,26 +191,6 @@ def _macro_block():
         return None
 
 
-def _congress_block_safe(ticker):
-    # attaching congressional disclosures, tolerating any failure
-    try:
-        from engine.congress import congress_block
-        return congress_block(ticker)
-    except Exception as e:
-        print(f"  [packet] congress block failed: {e}")
-        return None
-
-
-def _insider_block(ticker):
-    # attaching recent insider filing evidence, tolerating any failure
-    try:
-        from engine.smart_money import insider_activity
-        return insider_activity(ticker)
-    except Exception as e:
-        print(f"  [insider] block failed for {ticker}: {e}")
-        return None
-
-
 def _india_context_block():
     # nifty regime + india VIX + FII/DII flows, all defensive
     try:
