@@ -18,13 +18,17 @@ def _panel(env, default):
     # reading panel membership from env so providers swap without code edits
     names = os.environ.get(env, default).split(",")
     valid = ("gemini", "groq", "mistral", "cerebras", "nvidia",
-             "github_models", "openrouter", "sambanova")
+             "github_models", "openrouter", "sambanova", "cloudflare")
     return [n.strip() for n in names if n.strip() in valid] \
         or default.split(",")
 
-BUY_PANEL = _panel("BULL_PANEL", "cerebras,groq")
+# defaults point only at providers confirmed healthy (cerebras 402-dead and
+# github_models 410-retired are gone; cloudflare's 8B is too weak to reason
+# over the debate, so it is deliberately NOT a default judge — see
+# JUDGE_ELIGIBLE). override any panel via env without code edits.
+BUY_PANEL = _panel("BULL_PANEL", "groq,openrouter")
 SELL_PANEL = _panel("BEAR_PANEL", "mistral,nvidia")
-JUDGE_PANEL = _panel("JUDGE_PANEL", "gemini,cerebras,sambanova")
+JUDGE_PANEL = _panel("JUDGE_PANEL", "gemini,nvidia,openrouter")
 def _keyed_providers():
     # the full pool the panel/rotation can draw from: every provider whose
     # api key is present. was hardcoded to 3, which starved the rotation and
@@ -54,10 +58,25 @@ def _keyed_providers():
 
 ALL_PROVIDERS = _keyed_providers()
 
+# providers capable of reasoning over the full debate well enough to JUDGE.
+# small models (e.g. cloudflare llama-3.1-8b) may still argue a bull/bear
+# case, but must not hold a judge vote — with a 2-3 seat panel a weak judge's
+# boilerplate vote gets equal weight and can veto a sound one. override with
+# JUDGE_ELIGIBLE (comma-separated) if a provider's quality changes.
+_JUDGE_ELIGIBLE_DEFAULT = "gemini,groq,mistral,nvidia,openrouter,sambanova"
+JUDGE_ELIGIBLE = {x.strip() for x in
+                  os.environ.get("JUDGE_ELIGIBLE", _JUDGE_ELIGIBLE_DEFAULT)
+                  .split(",") if x.strip()}
+# the pool judges are actually drawn from: healthy AND judge-capable
+JUDGE_POOL = [p for p in ALL_PROVIDERS if p in JUDGE_ELIGIBLE] or ALL_PROVIDERS
 
-def _seat_reply(prompt, preferred, used, schema):
-    # filling one panel seat, falling back to any healthy unused provider
-    order = [preferred] + [p for p in ALL_PROVIDERS if p != preferred]
+
+def _seat_reply(prompt, preferred, used, schema, pool=None):
+    # filling one panel seat, falling back to any healthy unused provider.
+    # pool restricts the fallback set (judges pass JUDGE_POOL so a dropped
+    # judge seat is only ever backfilled by another judge-capable provider)
+    fallback_pool = pool if pool is not None else ALL_PROVIDERS
+    order = [preferred] + [p for p in fallback_pool if p != preferred]
     for provider in order:
         if provider in used:
             continue
@@ -148,13 +167,14 @@ def run_judges(packet, bull, bear, bull_reb, bear_reb):
     prompt = _judge_prompt(packet, bull, bear, bull_reb, bear_reb)
     try:
         from engine.judge_rotation import choose_panel
-        panel = choose_panel("judge", JUDGE_PANEL, ALL_PROVIDERS,
+        panel = choose_panel("judge", JUDGE_PANEL, JUDGE_POOL,
                              len(JUDGE_PANEL))
     except Exception:
         panel = JUDGE_PANEL
     votes, used = [], set()
     for provider in panel:
-        reply = _seat_reply(prompt, provider, used, VOTE_SCHEMA)
+        reply = _seat_reply(prompt, provider, used, VOTE_SCHEMA,
+                            pool=JUDGE_POOL)
         if reply and reply.get("vote") in ("BUY", "SELL", "NO_TRADE"):
             votes.append(reply)
     return votes

@@ -117,8 +117,14 @@ def _winning_side_confidence(decision, votes):
     agree = [v.get("confidence", 0) for v in votes
              if v.get("vote") == decision]
     return (sum(agree) / len(agree)) if agree else 0.0
-MIN_JUDGE_CONFIDENCE = float(os.environ.get("MIN_JUDGE_CONFIDENCE", "0.40"))  # avg judge conviction to act (env-tunable)
+# conviction bars, raised deliberately: the scored record shows acting loses
+# (BUY ~12%, SELL ~20%) while abstaining wins (~52%), and always_neutral beats
+# every model. so the gate should act RARELY and only on strong agreement.
+# all env-tunable — lower these to trade more if a future edge appears.
+MIN_JUDGE_CONFIDENCE = float(os.environ.get("MIN_JUDGE_CONFIDENCE", "0.60"))  # avg conviction across all judges
+MIN_WIN_CONFIDENCE = float(os.environ.get("MIN_WIN_CONFIDENCE", "0.65"))      # conviction of judges voting the winning way
 MIN_JUDGE_QUORUM = int(os.environ.get("MIN_JUDGE_QUORUM", "2"))  # refusing action on a single judge's vote
+REQUIRE_MAJORITY = os.environ.get("REQUIRE_MAJORITY", "1") == "1"  # winning side must be a strict majority, not a plurality
 
 
 def count_trades_today():
@@ -159,24 +165,45 @@ def apply_gate(ticker, verdict, packet=None):
         return "NO_TRADE", (f"gate: only {len(votes)} judge vote(s) — "
                             f"quorum is {MIN_JUDGE_QUORUM}")
 
-    # blocking low-conviction actions
+    # blocking low-conviction actions (average across all judges)
     if decision != "NO_TRADE":
         avg_conf = sum(v.get("confidence", 0) for v in votes) / len(votes)
         if avg_conf < MIN_JUDGE_CONFIDENCE:
             return "NO_TRADE", (f"gate: avg judge confidence {avg_conf:.2f} "
                                 f"below {MIN_JUDGE_CONFIDENCE}")
 
-    # blocking BUYs that fight the model's own signal — the single measured
-    # failure mode (20.8% hit rate live; lessons flag it weekly). only an
-    # exceptional judge conviction overrides. SELLs are untouched (41.7%,
-    # above their base rate) — this gate cuts the measured bleeding only.
-    if decision == "BUY" and CNN_ALIGN_GATE and packet:
+    # blocking actions where the judges who voted FOR the trade are not
+    # themselves convinced — stops a lone strong vote (plus a weak agree, or
+    # a plurality over a split) from carrying a trade the panel doubts
+    if decision != "NO_TRADE":
+        win_conf = _winning_side_confidence(decision, votes)
+        if win_conf < MIN_WIN_CONFIDENCE:
+            return "NO_TRADE", (f"gate: winning-side conviction "
+                                f"{win_conf:.2f} below {MIN_WIN_CONFIDENCE}")
+
+    # requiring a strict majority for the winning direction, not a plurality:
+    # with 3 judges a 1-1-1 split or 1-1 with abstain should not trade
+    if decision != "NO_TRADE" and REQUIRE_MAJORITY:
+        agree = sum(1 for v in votes if v.get("vote") == decision)
+        if agree * 2 <= len(votes):
+            return "NO_TRADE", (f"gate: {agree}/{len(votes)} judges for "
+                                f"{decision} is not a majority")
+
+    # blocking trades that fight the model's own signal. a BUY fights the
+    # model when it reads Down/Neutral; a SELL fights it when it reads
+    # Up/Neutral. both directions bled live (BUY ~12%, SELL ~20%), so both
+    # now require exceptional winning-side conviction to override. the model
+    # agreeing (BUY+Up, SELL+Down) passes untouched.
+    if decision in ("BUY", "SELL") and CNN_ALIGN_GATE and packet:
         sig = (packet.get("cnn_signal") or {})
         direction = sig.get("direction")
-        if direction in ("Down", "Neutral"):
+        fights_model = (
+            (decision == "BUY" and direction in ("Down", "Neutral")) or
+            (decision == "SELL" and direction in ("Up", "Neutral")))
+        if fights_model:
             conf = _winning_side_confidence(decision, verdict["judge_votes"])
             if conf < CNN_ALIGN_OVERRIDE:
-                return "NO_TRADE", (f"gate: BUY against model signal "
+                return "NO_TRADE", (f"gate: {decision} against model signal "
                                     f"{direction} (judge conf {conf:.2f} < "
                                     f"{CNN_ALIGN_OVERRIDE}) — abstaining")
 
