@@ -7,8 +7,8 @@ ADANIENT,Industrials
 ADANIGREEN,Utilities
 ADANIPORTS,Industrials
 ADANIPOWER,Utilities
-ALKEM,Health Care
 AMBUJACEM,Materials
+APARINDS,Industrials
 APLAPOLLO,Industrials
 APOLLOHOSP,Health Care
 ASHOKLEY,Industrials
@@ -44,7 +44,6 @@ COCHINSHIP,Industrials
 COFORGE,Information Technology
 COLPAL,Consumer Staples
 CONCOR,Industrials
-COROMANDEL,Materials
 CUMMINSIND,Industrials
 DABUR,Consumer Staples
 DIVISLAB,Health Care
@@ -75,10 +74,10 @@ HDFCBANK,Financials
 HDFCLIFE,Financials
 HEROMOTOCO,Consumer Discretionary
 HINDALCO,Materials
+HINDCOPPER,Materials
 HINDPETRO,Energy
 HINDUNILVR,Consumer Staples
 HINDZINC,Materials
-HUDCO,Financials
 HYUNDAI,Consumer Discretionary
 ICICIAMC,Financials
 ICICIBANK,Financials
@@ -104,11 +103,11 @@ JUBLFOOD,Consumer Discretionary
 KALYANKJIL,Consumer Discretionary
 KEI,Industrials
 KOTAKBANK,Financials
-KPITTECH,Information Technology
 LAURUSLABS,Health Care
 LENSKART,Consumer Discretionary
 LGEINDIA,Consumer Discretionary
 LICHSGFIN,Financials
+LICI,Financials
 LODHA,Real Estate
 LT,Industrials
 LTF,Financials
@@ -116,12 +115,14 @@ LTM,Information Technology
 LUPIN,Health Care
 M&M,Consumer Discretionary
 M&MFIN,Financials
+MAHABANK,Financials
 MANKIND,Health Care
 MARICO,Consumer Staples
 MARUTI,Consumer Discretionary
 MAXHEALTH,Health Care
 MAZDOCK,Industrials
 MCX,Financials
+MEESHO,Consumer Discretionary
 MFSL,Financials
 MOTHERSON,Consumer Discretionary
 MOTILALOFS,Financials
@@ -132,6 +133,7 @@ NATIONALUM,Materials
 NAUKRI,Consumer Discretionary
 NESTLEIND,Consumer Staples
 NHPC,Utilities
+NLCINDIA,Utilities
 NMDC,Materials
 NTPC,Utilities
 NYKAA,Consumer Discretionary
@@ -162,7 +164,6 @@ SAIL,Materials
 SBICARD,Financials
 SBILIFE,Financials
 SBIN,Financials
-SHREECEM,Materials
 SHRIRAMFIN,Financials
 SIEMENS,Industrials
 SOLARINDS,Materials
@@ -174,8 +175,6 @@ SWIGGY,Consumer Discretionary
 TATACAP,Financials
 TATACOMM,Communication Services
 TATACONSUM,Consumer Staples
-TATAELXSI,Information Technology
-TATAINVEST,Financials
 TATAPOWER,Utilities
 TATASTEEL,Materials
 TCS,Information Technology
@@ -191,6 +190,7 @@ ULTRACEMCO,Materials
 UNIONBANK,Financials
 UNITDSPR,Consumer Staples
 UPL,Materials
+VAML,Materials
 VBL,Consumer Staples
 VEDL,Materials
 VMM,Consumer Discretionary
